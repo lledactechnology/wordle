@@ -749,3 +749,192 @@ body {
   font-size: 0.85em;
   margin-left: 0.5em;
 }
+
+/* ===== GOD MODE ===== */
+.god-mode {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+  gap: 1em;
+  color: white;
+  padding: 0.5em;
+}
+
+.god-mode-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  padding-bottom: 0.5em;
+  border-bottom: 1px solid hsl(240, 2%, 23%);
+}
+
+.god-mode-top-bar h2 {
+  margin: 0;
+  font-size: 1.8em;
+  background: linear-gradient(135deg, hsl(280, 60%, 60%), hsl(200, 60%, 50%));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.god-mode-subtitle {
+  color: hsl(0, 0%, 60%);
+  margin: 0;
+  font-size: 0.95em;
+}
+
+.god-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1em;
+  overflow-y: auto;
+  flex-grow: 1;
+  padding: 0.5em 0;
+}
+
+.god-mode-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 3em 1em;
+  color: hsl(0, 0%, 50%);
+}
+
+.god-mode-empty h3 {
+  font-size: 1.5em;
+  margin: 0 0 0.5em 0;
+}
+
+.spectate-card {
+  background: hsl(240, 3%, 12%);
+  border: 1px solid hsl(240, 2%, 23%);
+  border-radius: 0.75em;
+  padding: 0.8em;
+  transition: border-color 300ms, box-shadow 300ms;
+}
+
+.spectate-card-solved {
+  border-color: hsl(115, 40%, 40%);
+  box-shadow: 0 0 12px rgba(100, 220, 100, 0.15);
+}
+
+.spectate-card-failed {
+  border-color: hsl(0, 40%, 40%);
+}
+
+.spectate-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.3em;
+  margin-bottom: 0.5em;
+}
+
+.spectate-name {
+  font-weight: bold;
+  font-size: 1.05em;
+}
+
+.spectate-status {
+  font-size: 0.8em;
+  padding: 0.15em 0.5em;
+  border-radius: 0.3em;
+  font-weight: bold;
+}
+
+.spectate-status-playing {
+  background: hsl(200, 30%, 20%);
+  color: hsl(200, 60%, 70%);
+}
+
+.spectate-status-solved {
+  background: hsl(115, 30%, 15%);
+  color: hsl(115, 50%, 65%);
+}
+
+.spectate-status-failed {
+  background: hsl(0, 30%, 18%);
+  color: hsl(0, 50%, 65%);
+}
+
+.spectate-attempts {
+  font-size: 0.75em;
+  color: hsl(0, 0%, 55%);
+  width: 100%;
+  text-align: right;
+}
+
+.spectate-miniboard {
+  margin: 0.3em 0;
+}
+
+.mini-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1.4em);
+  gap: 0.15em;
+  justify-content: center;
+  margin-bottom: 0.15em;
+}
+
+.mini-tile {
+  width: 1.4em;
+  height: 1.4em;
+  font-size: 0.75em;
+  font-weight: bold;
+  text-transform: uppercase;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 0.2em;
+  border: 1px solid hsl(240, 2%, 20%);
+  color: white;
+  background: transparent;
+}
+
+.mini-tile.mini-correct {
+  border: none;
+  background-color: hsl(115, 29%, 43%);
+}
+
+.mini-tile.mini-wrong-location {
+  border: none;
+  background-color: hsl(49, 51%, 47%);
+}
+
+.mini-tile.mini-wrong {
+  border: none;
+  background-color: hsl(240, 2%, 23%);
+}
+
+.spectate-status-msg {
+  margin-top: 0.3em;
+  font-size: 0.78em;
+  text-align: center;
+  color: hsl(0, 0%, 55%);
+  font-style: italic;
+}
+
+/* God Mode responsive */
+@media (max-width: 600px) {
+  .god-mode-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.5em;
+  }
+  .spectate-card {
+    padding: 0.5em;
+  }
+  .mini-tile {
+    width: 1.2em;
+    height: 1.2em;
+    font-size: 0.65em;
+  }
+  .mini-row {
+    grid-template-columns: repeat(5, 1.2em);
+    gap: 0.1em;
+  }
+}

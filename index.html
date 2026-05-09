@@ -128,7 +128,7 @@
 
     <div class="game-layout">
       <!-- Main game board -->
-      <div class="game-main">
+      <div class="game-main" data-game-main>
         <div data-guess-grid class="guess-grid">
           <div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div>
           <div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div>
@@ -176,9 +176,24 @@
       </div>
 
       <!-- Leaderboard sidebar -->
-      <div class="leaderboard">
+      <div class="leaderboard" data-leaderboard>
         <h3>Leaderboard</h3>
         <div data-leaderboard-list class="leaderboard-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- God Mode Spectating -->
+  <div data-god-mode class="god-mode hidden">
+    <div class="god-mode-top-bar">
+      <h2>👁️ God Mode</h2>
+      <p class="god-mode-subtitle">You can now watch everyone else finish.</p>
+      <button data-god-mode-back-btn class="small-btn">Back to My Board</button>
+    </div>
+    <div data-god-mode-grid class="god-mode-grid">
+      <div class="god-mode-empty">
+        <h3>👀 Loading players...</h3>
+        <p>Fetching live boards...</p>
       </div>
     </div>
   </div>

@@ -82,85 +82,6 @@ function createRoom(settings) {
   return room;
 }
 
-// Helper: can a player spectate?
-function canPlayerSpectate(player, room) {
-  // Player can spectate if they have finished their own game (solved or failed)
-  return player.solved === true;
-}
-
-// Helper: get spectator-safe data for a specific player
-function getSpectatorPlayerData(targetPlayer, room) {
-  const round = room.rounds[room.currentRound];
-  if (!round) return null;
-
-  const playerGuesses = (round.playerGuesses && round.playerGuesses[targetPlayer.id]) || [];
-  const result = round.results[targetPlayer.id];
-
-  let status = 'playing';
-  if (result) {
-    status = result.solved ? 'solved' : 'failed';
-  }
-
-  return {
-    id: targetPlayer.id,
-    name: targetPlayer.name,
-    guesses: playerGuesses,
-    attemptsUsed: targetPlayer.attemptsUsed || 0,
-    status: status,
-  };
-}
-
-// Send initial spectator data to a player who just became eligible
-function sendSpectateInit(ws, spectator, room) {
-  if (!canPlayerSpectate(spectator, room)) return;
-
-  const othersData = room.players
-    .filter(p => p.id !== spectator.id)
-    .map(p => getSpectatorPlayerData(p, room))
-    .filter(Boolean);
-
-  ws.send(JSON.stringify({
-    type: 'spectateInit',
-    players: othersData,
-  }));
-}
-
-// Broadcast a single guess update to all eligible spectators
-function broadcastSpectateUpdate(room, guessingPlayerId, guessData, attemptNumber, status) {
-  const payload = JSON.stringify({
-    type: 'spectateUpdate',
-    playerId: guessingPlayerId,
-    guess: guessData,
-    attemptNumber: attemptNumber,
-    status: status,
-  });
-
-  room.players.forEach(p => {
-    // Don't send to the guessing player themselves (they get guessResult)
-    if (p.id === guessingPlayerId) return;
-    // Only send to eligible spectators
-    if (!canPlayerSpectate(p, room)) return;
-    if (p.ws && p.ws.readyState === WebSocket.OPEN) {
-      p.ws.send(payload);
-    }
-  });
-}
-
-// Notify spectators when a player leaves
-function broadcastSpectatePlayerLeft(room, leftPlayerId) {
-  const payload = JSON.stringify({
-    type: 'spectatePlayerLeft',
-    playerId: leftPlayerId,
-  });
-
-  room.players.forEach(p => {
-    if (!canPlayerSpectate(p, room)) return;
-    if (p.ws && p.ws.readyState === WebSocket.OPEN) {
-      p.ws.send(payload);
-    }
-  });
-}
-
 function getRoomState(room) {
   return {
     id: room.id,
@@ -172,8 +93,6 @@ function getRoomState(room) {
       roundScores: p.roundScores,
       solved: p.solved,
       isHost: p.isHost,
-      hasSolved: p.hasSolved,
-      attemptsUsed: p.attemptsUsed || 0,
     })),
     currentRound: room.currentRound,
     state: room.state,
@@ -197,17 +116,12 @@ function startRound(room) {
   room.rounds.push({
     word,
     results: {},
-    playerGuesses: {},
     startTime: Date.now(),
   });
   
   room.state = 'playing';
   room.timeRemaining = room.settings.timePerRound;
-  room.players.forEach(p => { 
-    p.solved = false; 
-    p.hasSolved = false;
-    p.attemptsUsed = 0;
-  });
+  room.players.forEach(p => { p.solved = false; });
   
   broadcastAll(room, {
     type: 'roundStart',
@@ -342,9 +256,10 @@ function handlePlayerGuess(ws, data) {
     return;
   }
   
-  // Check if already solved - if so, reject guess
-  if (round.results[player.id] && round.results[player.id].solved) {
-    ws.send(JSON.stringify({ type: 'alreadySolved' }));
+  if (round.results[player.id]?.solved) {
+    ws.send(JSON.stringify({
+      type: 'alreadySolved',
+    }));
     return;
   }
   
@@ -355,15 +270,6 @@ function handlePlayerGuess(ws, data) {
   const feedback = calculateFeedback(guess, word);
   const solved = guess === word;
   
-  // Update player attempt tracking
-  player.attemptsUsed = attemptNumber;
-  
-  // Store guess for spectator replay
-  if (!round.playerGuesses) round.playerGuesses = {};
-  if (!round.playerGuesses[player.id]) round.playerGuesses[player.id] = [];
-  round.playerGuesses[player.id].push({ word: guess, feedback: feedback });
-  
-  // Send result back to the guessing player
   ws.send(JSON.stringify({
     type: 'guessResult',
     guess: guess,
@@ -374,6 +280,7 @@ function handlePlayerGuess(ws, data) {
   
   if (solved) {
     const timeTaken = room.settings.timePerRound - room.timeRemaining;
+    // Score formula: base 1000 + time bonus (up to 500) + attempt bonus
     const timeBonus = Math.floor((room.timeRemaining / room.settings.timePerRound) * 500);
     const attemptBonus = Math.max(0, (6 - attemptNumber) * 100);
     const roundScore = 1000 + timeBonus + attemptBonus;
@@ -387,9 +294,8 @@ function handlePlayerGuess(ws, data) {
       roundScore: roundScore,
     };
     player.solved = true;
-    player.hasSolved = true;
     
-    // Broadcast player progress to all
+    // Broadcast player progress
     broadcastAll(room, {
       type: 'playerProgress',
       playerId: player.id,
@@ -399,12 +305,6 @@ function handlePlayerGuess(ws, data) {
       timeTaken: timeTaken,
       roomState: getRoomState(room),
     });
-    
-    // Broadcast spectator update to eligible spectators
-    broadcastSpectateUpdate(room, player.id, { word: guess, feedback: feedback }, attemptNumber, 'solved');
-    
-    // Send spectate init to the completing player
-    sendSpectateInit(ws, player, room);
     
     // Check if all players solved
     const allSolved = room.players.every(p => p.solved);
@@ -423,7 +323,6 @@ function handlePlayerGuess(ws, data) {
       roundScore: 0,
     };
     player.solved = true;
-    player.hasSolved = false;
     
     broadcastAll(room, {
       type: 'playerProgress',
@@ -435,20 +334,11 @@ function handlePlayerGuess(ws, data) {
       roomState: getRoomState(room),
     });
     
-    // Broadcast spectator update to eligible spectators
-    broadcastSpectateUpdate(room, player.id, { word: guess, feedback: feedback }, 6, 'failed');
-    
-    // Send spectate init to the completing player
-    sendSpectateInit(ws, player, room);
-    
     // Check if all finished
     const allDone = room.players.every(p => p.solved);
     if (allDone) {
       endRound(room);
     }
-  } else {
-    // Not complete yet - still broadcast to eligible spectators
-    broadcastSpectateUpdate(room, player.id, { word: guess, feedback: feedback }, attemptNumber, 'playing');
   }
 }
 
@@ -484,7 +374,7 @@ function calculateFeedback(guess, word) {
 function broadcastAll(room, message) {
   const msg = JSON.stringify(message);
   room.players.forEach(p => {
-    if (p.ws && p.ws.readyState === WebSocket.OPEN) {
+    if (p.ws.readyState === WebSocket.OPEN) {
       p.ws.send(msg);
     }
   });
@@ -519,8 +409,6 @@ wss.on('connection', (ws) => {
           score: 0,
           roundScores: [],
           solved: false,
-          hasSolved: false,
-          attemptsUsed: 0,
         };
         
         room.players.push(playerInfo);
@@ -583,8 +471,6 @@ wss.on('connection', (ws) => {
           score: 0,
           roundScores: [],
           solved: false,
-          hasSolved: false,
-          attemptsUsed: 0,
         };
         
         room.players.push(playerInfo);
@@ -625,8 +511,6 @@ wss.on('connection', (ws) => {
         room.players.forEach(p => {
           p.score = 0;
           p.roundScores = [];
-          p.hasSolved = false;
-          p.attemptsUsed = 0;
         });
         
         startRound(room);
@@ -671,17 +555,6 @@ wss.on('connection', (ws) => {
           playerName: player.name,
           message: data.message?.substring(0, 200) || '',
         });
-        break;
-      }
-      
-      // God Mode: Request spectator data (used on reconnect/refresh)
-      case 'requestSpectate': {
-        const player = players.get(ws);
-        if (!player) return;
-        const room = rooms.get(player.roomId);
-        if (!room) return;
-        
-        sendSpectateInit(ws, player, room);
         break;
       }
     }
@@ -730,9 +603,6 @@ function handlePlayerLeave(ws) {
       playerName: player.name,
       roomState: getRoomState(room),
     });
-    
-    // Notify spectators that a player left
-    broadcastSpectatePlayerLeft(room, player.id);
     
     // Check if all remaining players finished
     if (room.state === 'playing') {
