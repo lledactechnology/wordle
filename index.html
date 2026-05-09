@@ -117,13 +117,22 @@
   <!-- Game Screen -->
   <div data-game-screen class="game-screen hidden">
     <div class="game-top-bar">
+      <div class="top-bar-left">
+        <button data-leave-game-btn class="icon-btn" title="Leave game" aria-label="Leave game">
+          <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 0 24 24" width="22" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </div>
       <div class="round-info">
         <span>Round <strong data-round-num></strong>/<span data-total-rounds></span></span>
       </div>
-      <div class="timer">
-        <span data-timer-display class="timer-display">120</span>
+      <div class="top-bar-right">
+        <div class="timer">
+          <span data-timer-display class="timer-display">120</span>
+        </div>
+        <button data-leaderboard-toggle class="icon-btn" title="Leaderboard" aria-label="Leaderboard">
+          <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 0 24 24" width="22" fill="currentColor"><path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2z"/></svg>
+        </button>
       </div>
-      <button data-leave-game-btn class="small-btn danger">Leave</button>
     </div>
 
     <div class="game-layout">
@@ -138,47 +147,64 @@
           <div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div>
         </div>
         <div data-keyboard class="keyboard">
-          <button class="key" data-key="Q">Q</button>
-          <button class="key" data-key="W">W</button>
-          <button class="key" data-key="E">E</button>
-          <button class="key" data-key="R">R</button>
-          <button class="key" data-key="T">T</button>
-          <button class="key" data-key="Y">Y</button>
-          <button class="key" data-key="U">U</button>
-          <button class="key" data-key="I">I</button>
-          <button class="key" data-key="O">O</button>
-          <button class="key" data-key="P">P</button>
-          <div class="space"></div>
-          <button class="key" data-key="A">A</button>
-          <button class="key" data-key="S">S</button>
-          <button class="key" data-key="D">D</button>
-          <button class="key" data-key="F">F</button>
-          <button class="key" data-key="G">G</button>
-          <button class="key" data-key="H">H</button>
-          <button class="key" data-key="J">J</button>
-          <button class="key" data-key="K">K</button>
-          <button class="key" data-key="L">L</button>
-          <div class="space"></div>
-          <button data-enter class="key large">Enter</button>
-          <button class="key" data-key="Z">Z</button>
-          <button class="key" data-key="X">X</button>
-          <button class="key" data-key="C">C</button>
-          <button class="key" data-key="V">V</button>
-          <button class="key" data-key="B">B</button>
-          <button class="key" data-key="N">N</button>
-          <button class="key" data-key="M">M</button>
-          <button data-delete class="key large">
-            <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
-              <path fill="var(--color-tone-1)" d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H7.07L2.4 12l4.66-7H22v14zm-11.59-2L14 13.41 17.59 17 19 15.59 15.41 12 19 8.41 17.59 7 14 10.59 10.41 7 9 8.41 12.59 12 9 15.59z"></path>
-            </svg>
-          </button>
+          <div class="keyboard-row">
+            <button class="key" data-key="Q">Q</button>
+            <button class="key" data-key="W">W</button>
+            <button class="key" data-key="E">E</button>
+            <button class="key" data-key="R">R</button>
+            <button class="key" data-key="T">T</button>
+            <button class="key" data-key="Y">Y</button>
+            <button class="key" data-key="U">U</button>
+            <button class="key" data-key="I">I</button>
+            <button class="key" data-key="O">O</button>
+            <button class="key" data-key="P">P</button>
+          </div>
+          <div class="keyboard-row row2">
+            <button class="key" data-key="A">A</button>
+            <button class="key" data-key="S">S</button>
+            <button class="key" data-key="D">D</button>
+            <button class="key" data-key="F">F</button>
+            <button class="key" data-key="G">G</button>
+            <button class="key" data-key="H">H</button>
+            <button class="key" data-key="J">J</button>
+            <button class="key" data-key="K">K</button>
+            <button class="key" data-key="L">L</button>
+          </div>
+          <div class="keyboard-row">
+            <button data-enter class="key large">Enter</button>
+            <button class="key" data-key="Z">Z</button>
+            <button class="key" data-key="X">X</button>
+            <button class="key" data-key="C">C</button>
+            <button class="key" data-key="V">V</button>
+            <button class="key" data-key="B">B</button>
+            <button class="key" data-key="N">N</button>
+            <button class="key" data-key="M">M</button>
+            <button data-delete class="key large">
+              <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+                <path fill="currentColor" d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H7.07L2.4 12l4.66-7H22v14zm-11.59-2L14 13.41 17.59 17 19 15.59 15.41 12 19 8.41 17.59 7 14 10.59 10.41 7 9 8.41 12.59 12 9 15.59z"></path>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Leaderboard sidebar -->
+      <!-- Leaderboard sidebar (desktop) -->
       <div class="leaderboard" data-leaderboard>
         <h3>Leaderboard</h3>
         <div data-leaderboard-list class="leaderboard-list"></div>
+      </div>
+    </div>
+
+    <!-- Leaderboard overlay (mobile bottom sheet) -->
+    <div data-leaderboard-overlay class="leaderboard-overlay hidden">
+      <div class="leaderboard-sheet">
+        <div class="leaderboard-sheet-header">
+          <h3>🏆 Leaderboard</h3>
+          <button data-leaderboard-close class="icon-btn" title="Close" aria-label="Close leaderboard">
+            <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+        <div data-leaderboard-sheet-list class="leaderboard-list"></div>
       </div>
     </div>
   </div>
