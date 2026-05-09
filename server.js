@@ -573,13 +573,28 @@ wss.on('connection', (ws) => {
           return;
         }
         
-        // Check name uniqueness
-        const nameExists = room.players.some(p => p.name.toLowerCase() === playerName.toLowerCase());
-        if (nameExists) {
+        // Rejoin: if name exists, always replace old ws (handles refresh race)
+        const existingIdx = room.players.findIndex(p => p.name.toLowerCase() === playerName.toLowerCase());
+        if (existingIdx !== -1) {
+          const existing = room.players[existingIdx];
+          // Detach old WebSocket so its close event is harmless
+          if (existing.ws) {
+            try { existing.ws.close(); } catch(e) {}
+            players.delete(existing.ws);
+          }
+          existing.ws = ws;
+          players.set(ws, existing);
           ws.send(JSON.stringify({
-            type: 'error',
-            message: 'Name already taken in this room',
+            type: 'roomJoined',
+            roomId: room.id,
+            playerId: existing.id,
+            roomState: getRoomState(room),
           }));
+          broadcastAll(room, {
+            type: 'playerRejoined',
+            player: { id: existing.id, name: existing.name },
+            roomState: getRoomState(room),
+          });
           return;
         }
         
@@ -712,53 +727,53 @@ function handlePlayerLeave(ws) {
   const room = rooms.get(player.roomId);
   players.delete(ws);
   
+  // Keep player in room.players so they can rejoin — just null the ws
+  player.ws = null;
+  
   if (!room) return;
   
-  const playerIdx = room.players.findIndex(p => p.ws === ws);
-  if (playerIdx !== -1) {
-    const wasHost = room.players[playerIdx].isHost;
-    room.players.splice(playerIdx, 1);
-    
-    if (room.players.length === 0) {
-      // Keep empty rooms alive for 2 min so host can share link
-      if (!room.emptiedAt) {
-        room.emptiedAt = Date.now();
-        return;
-      } else if (Date.now() - room.emptiedAt < 2 * 60 * 1000) {
-        return;
+  broadcastAll(room, {
+    type: 'playerLeft',
+    playerId: player.id,
+    playerName: player.name,
+    roomState: getRoomState(room),
+  });
+  
+  // Notify spectators
+  broadcastSpectatePlayerLeft(room, player.id);
+  
+  // Check if all ACTIVE players finished
+  if (room.state === 'playing') {
+    const activePlayers = room.players.filter(p => p.ws && p.ws.readyState === WebSocket.OPEN);
+    if (activePlayers.length > 0) {
+      const allDone = activePlayers.every(p => p.solved);
+      if (allDone) endRound(room);
+    }
+  }
+  
+  // Reassign host if needed
+  if (player.isHost) {
+    player.isHost = false;
+    const nextHost = room.players.find(p => p.ws && p.ws.readyState === WebSocket.OPEN && p.id !== player.id);
+    if (nextHost) {
+      nextHost.isHost = true;
+      if (nextHost.ws.readyState === WebSocket.OPEN) {
+        nextHost.ws.send(JSON.stringify({ type: 'hostAssigned' }));
       }
+    }
+  }
+  
+  // Clean up if ALL players disconnected and grace period passed
+  const hasActive = room.players.some(p => p.ws && p.ws.readyState === WebSocket.OPEN);
+  if (!hasActive) {
+    if (!room.emptiedAt) {
+      room.emptiedAt = Date.now();
+    } else if (Date.now() - room.emptiedAt >= 2 * 60 * 1000) {
       clearInterval(room.timerInterval);
       rooms.delete(room.id);
-      return;
-    } else {
-      room.emptiedAt = null;
     }
-    
-    // Reassign host if needed
-    if (wasHost) {
-      room.players[0].isHost = true;
-      room.players[0].ws.send(JSON.stringify({
-        type: 'hostAssigned',
-      }));
-    }
-    
-    broadcastAll(room, {
-      type: 'playerLeft',
-      playerId: player.id,
-      playerName: player.name,
-      roomState: getRoomState(room),
-    });
-    
-    // Notify spectators that a player left
-    broadcastSpectatePlayerLeft(room, player.id);
-    
-    // Check if all remaining players finished
-    if (room.state === 'playing') {
-      const allDone = room.players.every(p => p.solved);
-      if (allDone) {
-        endRound(room);
-      }
-    }
+  } else {
+    room.emptiedAt = null;
   }
 }
 
