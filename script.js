@@ -101,7 +101,7 @@ document.querySelector('[data-join-cancel]').addEventListener('click',()=>showSc
 document.querySelector('[data-join-confirm]').addEventListener('click',()=>{const n=document.getElementById('join-player-name').value.trim();const c=document.getElementById('join-room-id').value.trim().toUpperCase();if(!n){showAlert('Enter name',2000);return;}if(!c){showAlert('Enter room ID',2000);return;}playerName=n;send({type:'joinRoom',playerName,roomId:c});});
 document.querySelector('[data-start-game-btn]').addEventListener('click',()=>send({type:'startGame'}));
 document.querySelector('[data-leave-room-btn]').addEventListener('click',resetToMenu);
-document.querySelector('[data-copy-room-btn]').addEventListener('click',()=>{if(roomId)navigator.clipboard.writeText(roomId).then(()=>showAlert('Copied!',1500)).catch(()=>{});});
+document.querySelector('[data-copy-room-btn]').addEventListener('click',()=>{if(roomId)navigator.clipboard.writeText(`${location.origin}${location.pathname}?room=${roomId}`).then(()=>showAlert('Link copied!',1500)).catch(()=>{});});
 document.querySelector('[data-chat-send]').addEventListener('click',()=>{const m=chatInput.value.trim();if(m){send({type:'chatMessage',message:m});chatInput.value='';}});
 chatInput.addEventListener('keypress',(e)=>{if(e.key==='Enter'){const m=chatInput.value.trim();if(m){send({type:'chatMessage',message:m});chatInput.value='';}}});
 document.querySelector('[data-next-round-btn]').addEventListener('click',()=>{send({type:'nextRound'});showScreen('game');resetBoard();});
@@ -117,4 +117,6 @@ document.addEventListener('keydown',(e)=>{if(gameState!=='playing')return;e.prev
 // Room ID input
 document.getElementById('join-room-id').addEventListener('input',(e)=>{e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'');});
 // Init
+// Auto-join from ?room= link
+(function(){const p=new URLSearchParams(location.search).get('room');if(p){setTimeout(()=>{const m=document.querySelector('[data-main-menu]');const j=document.querySelector('[data-join-room-modal]');const i=document.getElementById('join-room-id');if(m&&j&&i){m.classList.add('hidden');j.classList.remove('hidden');i.value=p.toUpperCase().trim().substring(0,5)}},150);}})();
 loadDicts().then(()=>{connectWS();showScreen('menu');});

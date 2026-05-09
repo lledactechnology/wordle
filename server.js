@@ -25,9 +25,18 @@ function getContentType(filePath) {
 }
 
 const server = http.createServer((req, res) => {
-  let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
-  filePath = filePath.split('?')[0];
-  
+  const parsed = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  let urlPath = parsed.pathname;
+  if (urlPath === '/' || urlPath === '') urlPath = '/index.html';
+  let filePath = path.join(__dirname, urlPath);
+
+  // If path is a directory, serve index.html from it
+  let stat;
+  try { stat = fs.statSync(filePath); } catch(e) {}
+  if (stat && stat.isDirectory()) {
+    filePath = path.join(filePath, 'index.html');
+  }
+
   fs.readFile(filePath, (err, data) => {
     if (err) {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -711,9 +720,18 @@ function handlePlayerLeave(ws) {
     room.players.splice(playerIdx, 1);
     
     if (room.players.length === 0) {
+      // Keep empty rooms alive for 2 min so host can share link
+      if (!room.emptiedAt) {
+        room.emptiedAt = Date.now();
+        return;
+      } else if (Date.now() - room.emptiedAt < 2 * 60 * 1000) {
+        return;
+      }
       clearInterval(room.timerInterval);
       rooms.delete(room.id);
       return;
+    } else {
+      room.emptiedAt = null;
     }
     
     // Reassign host if needed
