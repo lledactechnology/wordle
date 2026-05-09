@@ -190,10 +190,13 @@
 
       <!-- Leaderboard sidebar (desktop) -->
       <div class="leaderboard" data-leaderboard>
-        <h3>Leaderboard</h3>
+        <h3>🏆 Leaderboard <button data-leaderboard-drawer-close class="leaderboard-drawer-close" title="Close" aria-label="Close leaderboard">&times;</button></h3>
         <div data-leaderboard-list class="leaderboard-list"></div>
       </div>
     </div>
+
+    <!-- Leaderboard backdrop (desktop drawer) -->
+    <div data-leaderboard-backdrop class="leaderboard-backdrop"></div>
 
     <!-- Leaderboard overlay (mobile bottom sheet) -->
     <div data-leaderboard-overlay class="leaderboard-overlay hidden">

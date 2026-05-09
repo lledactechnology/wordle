@@ -65,7 +65,7 @@ switch(p.status){case'solved':statusBadge='solved';statusLabel='✅ Solved';brea
 card.innerHTML='<div class="spectate-header"><span class="spectate-name">'+esc(p.name)+'</span><span class="spectate-status spectate-status-'+statusBadge+'">'+statusLabel+'</span><span class="spectate-attempts">Attempts: '+p.attemptsUsed+'/6</span></div><div class="spectate-miniboard" data-miniboard="'+p.id+'">'+renderMiniBoard(p.guesses)+'</div><div class="spectate-status-msg">'+getStatusMessage(p.status,p.attemptsUsed)+'</div>';
 godModeGrid.appendChild(card);});}
 
-function renderMiniBoard(guesses){let html='';for(let r=0;r<WR;r++){html+='<div class="mini-row">';for(let c=0;c<WL;c++){let letter='',state='';if(r<guesses.length){letter=guesses[r].word[c].toUpperCase();state=guesses[r].feedback[c];}html+='<div class="mini-tile mini-'+state+'">'+letter+'</div>';}html+='</div>';}return html;}
+function renderMiniBoard(guesses){let html='';for(let r=0;r<6;r++){html+='<div class="mini-row">';for(let c=0;c<5;c++){let letter='',state='';if(guesses&&r<guesses.length&&guesses[r]){letter=guesses[r].word?guesses[r].word[c].toUpperCase():'';state=guesses[r].feedback?guesses[r].feedback[c]:'';}html+='<div class="mini-tile mini-'+state+'">'+letter+'</div>';}html+='</div>';}return html;}
 
 function updateSpectatePlayerBoard(playerId,guess,attemptNum,status){if(!spectateData[playerId]){spectateData[playerId]={id:playerId,name:'Player',guesses:[],attemptsUsed:0,status:'playing'};}
 const p=spectateData[playerId];p.guesses.push(guess);p.attemptsUsed=attemptNum;
@@ -116,6 +116,47 @@ keyboardEl.addEventListener('click',(e)=>{if(gameState!=='playing')return;const 
 document.addEventListener('keydown',(e)=>{if(gameState!=='playing')return;e.preventDefault();if(e.key==='Enter')handleKey('Enter');else if(e.key==='Backspace'||e.key==='Delete')handleKey('Backspace');else if(/^[a-zA-Z]$/.test(e.key))handleKey(e.key);});
 // Room ID input
 document.getElementById('join-room-id').addEventListener('input',(e)=>{e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'');});
+
+// ===== LEADERBOARD TOGGLE (Drawer on desktop, sheet on mobile) =====
+(function() {
+  const toggle = document.querySelector('[data-leaderboard-toggle]');
+  const overlay = document.querySelector('[data-leaderboard-overlay]');
+  const closeBtn = document.querySelector('[data-leaderboard-close]');
+  const sidebar = document.querySelector('[data-leaderboard]');
+  const sheetList = document.querySelector('[data-leaderboard-sheet-list]');
+  const sidebarList = document.querySelector('[data-leaderboard-list]');
+  const backdrop = document.querySelector('[data-leaderboard-backdrop]');
+  const drawerClose = document.querySelector('[data-leaderboard-drawer-close]');
+
+  function isDesktop() { return window.matchMedia('(min-width: 768px)').matches; }
+
+  function openLB() {
+    if (isDesktop()) {
+      sidebar.classList.add('open');
+      if (backdrop) backdrop.classList.add('open');
+    } else {
+      if (sheetList && sidebarList) sheetList.innerHTML = sidebarList.innerHTML;
+      overlay.classList.remove('hidden');
+    }
+  }
+
+  function closeLB() {
+    sidebar.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+    if (overlay) overlay.classList.add('hidden');
+  }
+
+  if (toggle) toggle.addEventListener('click', openLB);
+  if (closeBtn) closeBtn.addEventListener('click', closeLB);
+  if (drawerClose) drawerClose.addEventListener('click', closeLB);
+  if (backdrop) backdrop.addEventListener('click', closeLB);
+  if (overlay) {
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) closeLB();
+    });
+  }
+})();
+
 // Init
 // Auto-join from ?room= link
 (function(){const p=new URLSearchParams(location.search).get('room');if(p){setTimeout(()=>{const m=document.querySelector('[data-main-menu]');const j=document.querySelector('[data-join-room-modal]');const i=document.getElementById('join-room-id');if(m&&j&&i){m.classList.add('hidden');j.classList.remove('hidden');i.value=p.toUpperCase().trim().substring(0,5)}},150);}})();
