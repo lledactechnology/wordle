@@ -1,1 +1,1 @@
-{"name":"wordle-multiplayer","version":"1.0.0","description":"Multiplayer Wordle game with rooms and scoring","main":"server.js","scripts":{"start":"node server.js","dev":"node server.js"},"dependencies":{"ws":"^8.16.0"}}
+{"name":"wordle-multiplayer","version":"1.0.0","description":"Multiplayer Wordle game with rooms and scoring","main":"server.js","scripts":{"start":"node server.js","dev":"node server.js","build-defs":"node scripts/buildDefinitions.js"},"dependencies":{"ws":"^8.16.0"}}

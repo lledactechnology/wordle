@@ -1195,3 +1195,61 @@ body {
     display: block;
   }
 }
+
+/* ===== WORD DEFINITION ===== */
+.word-definition {
+  color: hsl(0, 0%, 75%);
+  font-size: 0.95em;
+  margin: 0.3em 0 0.8em 0;
+  line-height: 1.4;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.word-definition em {
+  color: hsl(115, 29%, 53%);
+  font-style: normal;
+  font-weight: bold;
+}
+
+/* ===== GAME END WORDS ===== */
+.game-end-words {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+  margin: 0.8em 0;
+}
+
+.game-end-word-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+  padding: 0.3em 0.5em;
+  border-radius: 0.3em;
+  background: hsl(240, 2%, 18%);
+  font-size: 0.85em;
+}
+
+.game-end-word-entry .gew-round {
+  font-weight: bold;
+  color: hsl(0, 0%, 50%);
+  min-width: 1.5em;
+}
+
+.game-end-word-entry .gew-word {
+  font-weight: bold;
+  color: hsl(115, 29%, 53%);
+  letter-spacing: 2px;
+  min-width: 3.5em;
+}
+
+.game-end-word-entry .gew-def {
+  color: hsl(0, 0%, 70%);
+}
+
+.game-end-word-entry .gew-def em {
+  color: hsl(115, 29%, 53%);
+  font-style: normal;
+  font-weight: bold;
+}

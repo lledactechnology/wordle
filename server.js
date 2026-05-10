@@ -8,6 +8,12 @@ const PORT = process.env.PORT || 3000;
 // Load word data
 const targetWords = JSON.parse(fs.readFileSync(path.join(__dirname, 'targetWords.json'), 'utf8'));
 const dictionary = JSON.parse(fs.readFileSync(path.join(__dirname, 'dictionary.json'), 'utf8'));
+let wordDefinitions = {};
+try {
+  wordDefinitions = JSON.parse(fs.readFileSync(path.join(__dirname, 'wordDefinitions.json'), 'utf8'));
+} catch (e) {
+  console.log('wordDefinitions.json not found — definitions will be unavailable');
+}
 
 // Serve static files
 function getContentType(filePath) {
@@ -304,9 +310,12 @@ function endRound(room) {
   
   room.currentRound++;
   
+  const def = wordDefinitions[word] || null;
+
   broadcastAll(room, {
     type: 'roundEnd',
     word: word,
+    definition: def,
     results: round.results,
     players: room.players.map(p => ({
       id: p.id,
@@ -344,6 +353,10 @@ function endGame(room) {
   
   broadcastAll(room, {
     type: 'gameEnd',
+    words: room.rounds.map(r => ({
+      word: r.word,
+      definition: wordDefinitions[r.word] || null,
+    })),
     players: sortedPlayers.map((p, i) => ({
       id: p.id,
       name: p.name,
