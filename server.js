@@ -70,6 +70,10 @@ function generatePlayerId() {
   return 'p_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4);
 }
 
+function generatePlayerToken() {
+  return 'tk_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 10);
+}
+
 function createRoom(settings) {
   const roomId = generateRoomId();
   const room = {
@@ -230,6 +234,14 @@ function startRound(room) {
   room.timerInterval = setInterval(() => {
     room.timeRemaining--;
     
+    // If all players disconnected, stop the timer to avoid orphan loops
+    const hasActive = room.players.some(p => p.ws && p.ws.readyState === WebSocket.OPEN);
+    if (!hasActive) {
+      clearInterval(room.timerInterval);
+      room.timerInterval = null;
+      return;
+    }
+    
     if (room.timeRemaining <= 0) {
       endRound(room);
       return;
@@ -254,11 +266,12 @@ function endRound(room) {
   // Calculate results for players who didn't solve
   room.players.forEach(p => {
     if (!round.results[p.id]) {
+      const guessesMade = (round.playerGuesses && round.playerGuesses[p.id]) ? round.playerGuesses[p.id].length : 0;
       round.results[p.id] = {
         playerId: p.id,
         playerName: p.name,
         solved: false,
-        attempts: 0,
+        attempts: guessesMade,
         timeTaken: room.settings.timePerRound,
         roundScore: 0,
       };
@@ -284,14 +297,21 @@ function endRound(room) {
     totalRounds: room.settings.rounds,
   });
   
-  // Auto-start next round after 15 seconds, or host can skip
-  setTimeout(() => {
-    if (room.state === 'roundEnd' && room.currentRound < room.settings.rounds) {
-      startRound(room);
-    } else if (room.currentRound >= room.settings.rounds) {
-      endGame(room);
-    }
-  }, 15000);
+  // After last round, show game end immediately
+  if (room.currentRound >= room.settings.rounds) {
+    endGame(room);
+  } else {
+    // Auto-start next round after 15 seconds, or host can skip
+    room.autoStartTimeout = setTimeout(() => {
+      if (room.state === 'roundEnd' && room.currentRound < room.settings.rounds) {
+        // Only auto-start if at least one player is still connected
+        const hasActive = room.players.some(p => p.ws && p.ws.readyState === WebSocket.OPEN);
+        if (hasActive) {
+          startRound(room);
+        }
+      }
+    }, 15000);
+  }
 }
 
 function endGame(room) {
@@ -333,8 +353,8 @@ function handlePlayerGuess(ws, data) {
     return;
   }
   
-  // Validate guess is in dictionary
-  if (!dictionary.includes(guess)) {
+  // Validate guess is in dictionary or target word list
+  if (!dictionary.includes(guess) && !targetWords.includes(guess)) {
     ws.send(JSON.stringify({
       type: 'guessInvalid',
       message: 'Not in word list',
@@ -355,7 +375,8 @@ function handlePlayerGuess(ws, data) {
   }
   
   const word = round.word;
-  const attemptNumber = (round.results[player.id]?.attempts || 0) + 1;
+  // Base attempt number on actual guesses stored, not on results (which are only set on solve/fail)
+  const attemptNumber = (round.playerGuesses && round.playerGuesses[player.id] ? round.playerGuesses[player.id].length : 0) + 1;
   
   // Calculate feedback
   const feedback = calculateFeedback(guess, word);
@@ -403,7 +424,6 @@ function handlePlayerGuess(ws, data) {
       solved: true,
       attempts: attemptNumber,
       timeTaken: timeTaken,
-      roomState: getRoomState(room),
     });
     
     // Broadcast spectator update to eligible spectators
@@ -438,7 +458,6 @@ function handlePlayerGuess(ws, data) {
       solved: false,
       attempts: 6,
       timeTaken: timeTaken,
-      roomState: getRoomState(room),
     });
     
     // Broadcast spectator update to eligible spectators
@@ -519,6 +538,7 @@ wss.on('connection', (ws) => {
         const playerInfo = {
           id: generatePlayerId(),
           name: playerName,
+          playerToken: generatePlayerToken(),
           ws: ws,
           roomId: room.id,
           isHost: true,
@@ -536,6 +556,7 @@ wss.on('connection', (ws) => {
           type: 'roomCreated',
           roomId: room.id,
           playerId: playerInfo.id,
+          playerToken: playerInfo.playerToken,
           roomState: getRoomState(room),
         }));
         break;
@@ -554,6 +575,57 @@ wss.on('connection', (ws) => {
           return;
         }
         
+        // Rejoin: match on playerToken (stored in sessionStorage) to prevent session hijacking
+        // MUST come before the lobby-state check so reconnects work during gameplay
+        const playerToken = data.playerToken || '';
+        const existingIdx = playerToken ? room.players.findIndex(p => p.playerToken === playerToken) : -1;
+        if (existingIdx !== -1) {
+          const existing = room.players[existingIdx];
+          // Detach old WebSocket so its close event is harmless
+          if (existing.ws) {
+            try { existing.ws.close(); } catch(e) {}
+            players.delete(existing.ws);
+          }
+          existing.ws = ws;
+          players.set(ws, existing);
+          
+          // Build reconnection payload with full board state
+          const rejoinPayload = {
+            type: 'roomJoined',
+            roomId: room.id,
+            playerId: existing.id,
+            playerToken: existing.playerToken,
+            roomState: getRoomState(room),
+          };
+          
+          // If reconnecting during a round or after game end, include personal board state
+          if (room.state === 'playing' || room.state === 'roundEnd' || room.state === 'finished') {
+            const currentRound = room.rounds[room.currentRound] || room.rounds[room.currentRound - 1];
+            if (currentRound) {
+              rejoinPayload.reconnectState = {
+                guesses: (currentRound.playerGuesses && currentRound.playerGuesses[existing.id]) || [],
+                solved: existing.solved || false,
+                hasSolved: existing.hasSolved || false,
+                attemptsUsed: existing.attemptsUsed || 0,
+              };
+            }
+            rejoinPayload.timeRemaining = room.timeRemaining;
+            rejoinPayload.gameState = room.state;
+            rejoinPayload.currentRound = room.currentRound;
+            rejoinPayload.totalRounds = room.settings.rounds;
+          }
+          
+          ws.send(JSON.stringify(rejoinPayload));
+          
+          broadcastAll(room, {
+            type: 'playerRejoined',
+            player: { id: existing.id, name: existing.name },
+            roomState: getRoomState(room),
+          });
+          return;
+        }
+        
+        // Only genuinely new players are blocked after the game starts
         if (room.state !== 'lobby') {
           ws.send(JSON.stringify({
             type: 'error',
@@ -570,34 +642,10 @@ wss.on('connection', (ws) => {
           return;
         }
         
-        // Rejoin: if name exists, always replace old ws (handles refresh race)
-        const existingIdx = room.players.findIndex(p => p.name.toLowerCase() === playerName.toLowerCase());
-        if (existingIdx !== -1) {
-          const existing = room.players[existingIdx];
-          // Detach old WebSocket so its close event is harmless
-          if (existing.ws) {
-            try { existing.ws.close(); } catch(e) {}
-            players.delete(existing.ws);
-          }
-          existing.ws = ws;
-          players.set(ws, existing);
-          ws.send(JSON.stringify({
-            type: 'roomJoined',
-            roomId: room.id,
-            playerId: existing.id,
-            roomState: getRoomState(room),
-          }));
-          broadcastAll(room, {
-            type: 'playerRejoined',
-            player: { id: existing.id, name: existing.name },
-            roomState: getRoomState(room),
-          });
-          return;
-        }
-        
         const playerInfo = {
           id: generatePlayerId(),
           name: playerName,
+          playerToken: generatePlayerToken(),
           ws: ws,
           roomId: room.id,
           isHost: false,
@@ -615,6 +663,7 @@ wss.on('connection', (ws) => {
           type: 'roomJoined',
           roomId: room.id,
           playerId: playerInfo.id,
+          playerToken: playerInfo.playerToken,
           roomState: getRoomState(room),
         }));
         
@@ -654,6 +703,36 @@ wss.on('connection', (ws) => {
         break;
       }
       
+      case 'restartGame': {
+        const player = players.get(ws);
+        if (!player || !player.isHost) return;
+
+        const room = rooms.get(player.roomId);
+        if (!room || room.state !== 'finished') return;
+
+        // Remove disconnected players
+        room.players = room.players.filter(p => p.ws && p.ws.readyState === WebSocket.OPEN);
+
+        // Reset room to lobby
+        room.state = 'lobby';
+        room.currentRound = 0;
+        room.rounds = [];
+        room.timeRemaining = 0;
+        room.emptiedAt = null;
+        if (room.timerInterval) { clearInterval(room.timerInterval); room.timerInterval = null; }
+        room.players.forEach(p => {
+          p.score = 0;
+          p.roundScores = [];
+          p.solved = false;
+        });
+
+        broadcastAll(room, {
+          type: 'roomRestarted',
+          roomState: getRoomState(room),
+        });
+        break;
+      }
+
       case 'nextRound': {
         const player = players.get(ws);
         if (!player || !player.isHost) return;
@@ -713,7 +792,8 @@ wss.on('connection', (ws) => {
   });
   
   ws.on('error', () => {
-    handlePlayerLeave(ws);
+    // Only handle if not already cleaned up by the close event
+    if (players.has(ws)) handlePlayerLeave(ws);
   });
 });
 
