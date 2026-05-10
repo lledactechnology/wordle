@@ -12,6 +12,8 @@ body {
   padding: 0.5em;
   font-size: clamp(.5rem, 2.5vmin, 1.5rem);
   overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
 }
 
 /* ===== KEYBOARD ===== */
@@ -59,6 +61,7 @@ body {
   border-radius: 0.3em;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .key.large {
@@ -118,6 +121,7 @@ body {
   transition: transform 250ms linear;
   min-width: 0;
   min-height: 0;
+  touch-action: manipulation;
 }
 
 .tile[data-state="active"] {
