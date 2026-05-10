@@ -235,13 +235,10 @@ function startRound(room) {
       return;
     }
     
-    // Broadcast time update every 5 seconds
-    if (room.timeRemaining % 5 === 0 || room.timeRemaining <= 10) {
-      broadcastAll(room, {
-        type: 'timerUpdate',
-        timeRemaining: room.timeRemaining,
-      });
-    }
+    broadcastAll(room, {
+      type: 'timerUpdate',
+      timeRemaining: room.timeRemaining,
+    });
   }, 1000);
 }
 
