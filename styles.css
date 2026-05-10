@@ -1028,9 +1028,14 @@ body {
 }
 
 .mini-tile.mini-wrong {
-  border: none;
-  background-color: hsl(240, 2%, 23%);
-}
+    border: none;
+    background-color: hsl(240, 2%, 23%);
+  }
+
+.mini-tile.mini-active {
+    border: 2px solid hsl(200, 60%, 65%);
+    box-shadow: 0 0 6px rgba(100, 180, 255, 0.3);
+  }
 
 .spectate-status-msg {
   font-size: 0.78em;

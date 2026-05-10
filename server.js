@@ -120,6 +120,7 @@ function getSpectatorPlayerData(targetPlayer, room) {
     guesses: playerGuesses,
     attemptsUsed: targetPlayer.attemptsUsed || 0,
     status: status,
+    currentGuess: targetPlayer.currentGuess || [],
   };
 }
 
@@ -174,6 +175,25 @@ function broadcastSpectatePlayerLeft(room, leftPlayerId) {
   });
 }
 
+// Broadcast live typing updates to all eligible spectators
+function broadcastSpectateTypingUpdate(room, typingPlayerId, currentGuess) {
+  const payload = JSON.stringify({
+    type: 'spectateTypingUpdate',
+    playerId: typingPlayerId,
+    currentGuess: currentGuess,
+  });
+
+  room.players.forEach(p => {
+    // Don't send to the typing player themselves
+    if (p.id === typingPlayerId) return;
+    // Only send to eligible spectators
+    if (!canPlayerSpectate(p, room)) return;
+    if (p.ws && p.ws.readyState === WebSocket.OPEN) {
+      p.ws.send(payload);
+    }
+  });
+}
+
 function getRoomState(room) {
   return {
     id: room.id,
@@ -220,6 +240,7 @@ function startRound(room) {
     p.solved = false; 
     p.hasSolved = false;
     p.attemptsUsed = 0;
+    p.currentGuess = [];
   });
   
   broadcastAll(room, {
@@ -389,6 +410,10 @@ function handlePlayerGuess(ws, data) {
   if (!round.playerGuesses) round.playerGuesses = {};
   if (!round.playerGuesses[player.id]) round.playerGuesses[player.id] = [];
   round.playerGuesses[player.id].push({ word: guess, feedback: feedback });
+  
+  // Clear current typing since a full guess was submitted
+  player.currentGuess = [];
+  broadcastSpectateTypingUpdate(room, player.id, []);
   
   // Send result back to the guessing player
   ws.send(JSON.stringify({
@@ -782,6 +807,23 @@ wss.on('connection', (ws) => {
         if (!room) return;
         
         sendSpectateInit(ws, player, room);
+        break;
+      }
+      
+      // Live typing: broadcast current row keystrokes to spectators
+      case 'typingUpdate': {
+        const player = players.get(ws);
+        if (!player) return;
+        const room = rooms.get(player.roomId);
+        if (!room || room.state !== 'playing') return;
+        // Don't relay typing if player already finished
+        if (player.solved) return;
+        
+        const currentGuess = Array.isArray(data.currentGuess) ? data.currentGuess.slice(0, 5) : [];
+        // Store on player object for reconnect
+        player.currentGuess = currentGuess;
+        
+        broadcastSpectateTypingUpdate(room, player.id, currentGuess);
         break;
       }
     }
