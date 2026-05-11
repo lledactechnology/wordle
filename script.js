@@ -175,9 +175,9 @@ if(playAgainBtn)playAgainBtn.addEventListener('click',()=>{send({type:'restartGa
 const godModeBackBtn = document.querySelector('[data-god-mode-back-btn]');
 if(godModeBackBtn)godModeBackBtn.addEventListener('click',()=>{showScreen('game');document.querySelector('[data-game-main]').style.display='';document.querySelector('[data-leaderboard]').style.display='';});
 // Keyboard click
-keyboardEl.addEventListener('click',(e)=>{if(gameState!=='playing')return;const k=e.target.closest('[data-key]');if(k)handleKey(k.dataset.key);else if(e.target.closest('[data-enter]'))handleKey('Enter');else if(e.target.closest('[data-delete]'))handleKey('Backspace');});
+keyboardEl.addEventListener('pointerdown', (e) => { if (gameState !== 'playing') return; e.preventDefault(); const k = e.target.closest('[data-key]'); if (k) { keyboardEl._lastPointerDown = Date.now(); handleKey(k.dataset.key); } else if (e.target.closest('[data-enter]')) { keyboardEl._lastPointerDown = Date.now(); handleKey('Enter'); } else if (e.target.closest('[data-delete]')) { keyboardEl._lastPointerDown = Date.now(); handleKey('Backspace'); } });
 // Physical keyboard
-document.addEventListener('keydown',(e)=>{if(gameState!=='playing')return;e.preventDefault();if(e.key==='Enter')handleKey('Enter');else if(e.key==='Backspace'||e.key==='Delete')handleKey('Backspace');else if(/^[a-zA-Z]$/.test(e.key))handleKey(e.key);});
+document.addEventListener('keydown', (e) => { if (gameState !== 'playing') return; if (keyboardEl._lastPointerDown && Date.now() - keyboardEl._lastPointerDown < 300) return; e.preventDefault(); if (e.key === 'Enter') handleKey('Enter'); else if (e.key === 'Backspace' || e.key === 'Delete') handleKey('Backspace'); else if (/^[a-zA-Z]$/.test(e.key)) handleKey(e.key); });
 // Room ID input
 document.getElementById('join-room-id').addEventListener('input',(e)=>{e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'');});
 
