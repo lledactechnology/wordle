@@ -1372,3 +1372,50 @@ body {
   font-style: normal;
   font-weight: bold;
 }
+
+/* ===== SOLO COMPLETE ===== */
+.solo-complete {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 70;
+  color: white;
+}
+
+.solo-complete-content {
+  text-align: center;
+  max-width: 500px;
+  padding: 2em;
+}
+
+.solo-complete-content h2 {
+  font-size: 2em;
+  margin: 0 0 0.5em 0;
+}
+
+.solo-word-reveal {
+  font-size: 1.3em;
+  margin: 0.5em 0 1em 0;
+}
+
+.solo-word-reveal strong {
+  color: hsl(115, 29%, 53%);
+  font-size: 1.2em;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+
+.solo-complete-buttons {
+  display: flex;
+  gap: 0.8em;
+  justify-content: center;
+  margin-top: 1.5em;
+}
+
+.solo-complete-buttons .menu-btn {
+  min-width: 140px;
+  font-size: 1.1em;
+}

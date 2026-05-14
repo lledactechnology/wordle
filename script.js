@@ -19,6 +19,10 @@ const chatInput = document.querySelector('[data-chat-input]');
 const timerDisplay = document.querySelector('[data-timer-display]');
 const godModeGrid = document.querySelector('[data-god-mode-grid]');
 const godModeReenterBtn = document.querySelector('[data-god-mode-reenter-btn]');
+const soloCompleteScreen = document.querySelector('[data-solo-complete]');
+const soloCompleteTitle = document.querySelector('[data-solo-complete-title]');
+const soloWordEl = document.querySelector('[data-solo-word]');
+const soloWordDefEl = document.querySelector('[data-solo-word-definition]');
 
 let ws=null,playerId=null,playerName='',roomId=null,isHost=false,gameState='menu',leaderboardData=[];
 let isSoloMode=false,soloTargetWord='',currentRow=0,currentGuess=[],roundSolved=false;
@@ -58,7 +62,7 @@ async function loadDicts(){targetWords=await fetch('targetWords.json').then(r=>r
 
 function showAlert(msg,dur=2000){const a=document.createElement('div');a.className='alert';a.textContent=msg;ac.appendChild(a);setTimeout(()=>a.classList.add('hide'),dur-500);setTimeout(()=>a.remove(),dur);}
 
-function showScreen(sc){const m={menu:mainMenu,createRoom:createRoomModal,joinRoom:joinRoomModal,lobby,game:gameScreen,godMode:godModeScreen,roundEnd:roundEndScreen,gameEnd:gameEndScreen};Object.values(m).forEach(s=>s&&s.classList.add('hidden'));if(m[sc])m[sc].classList.remove('hidden');if(document.activeElement&&document.activeElement!==document.body)document.activeElement.blur();}
+function showScreen(sc){const m={menu:mainMenu,createRoom:createRoomModal,joinRoom:joinRoomModal,lobby,game:gameScreen,godMode:godModeScreen,roundEnd:roundEndScreen,gameEnd:gameEndScreen,soloComplete:soloCompleteScreen};Object.values(m).forEach(s=>s&&s.classList.add('hidden'));if(m[sc])m[sc].classList.remove('hidden');if(document.activeElement&&document.activeElement!==document.body)document.activeElement.blur();}
 function showGodModeReenterBtn(show){if(godModeReenterBtn)godModeReenterBtn.classList.toggle('hidden',!show);}
 
 let _reconnectAttempts=0,_reconnectTimer=null,_reconnecting=false;function connectWS(){if(_reconnecting)return;_reconnecting=true;if(_reconnectTimer){clearTimeout(_reconnectTimer);_reconnectTimer=null;}const p=location.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(p+'//'+location.host);ws.onopen=()=>{console.log('WS OPEN');_reconnectAttempts=0;_reconnecting=false;if(!isSoloMode){const saved=getReconnectSession();if(saved.roomId&&saved.playerName&&saved.playerToken&&!roomId){playerName=saved.playerName;send({type:'joinRoom',playerName:saved.playerName,roomId:saved.roomId,playerToken:saved.playerToken});showAlert('Reconnecting...',3000);if(sessionStorage.getItem('wordle_roundComplete')==='true'){myGameComplete=true;}}}};ws.onmessage=e=>handleServer(JSON.parse(e.data));ws.onclose=()=>{_reconnecting=false;if(gameState!=='menu'){_reconnectAttempts++;if(_reconnectAttempts>8){showAlert('Unable to reconnect. Please refresh the page.',5000);resetToMenu();return;}const delay=Math.min(3000*Math.pow(1.5,_reconnectAttempts-1),30000);console.log('WS closed, reconnecting in '+Math.round(delay/1000)+'s (attempt '+_reconnectAttempts+'/8)');_reconnectTimer=setTimeout(connectWS,delay);}};ws.onerror=e=>{console.error('WS ERR',e);_reconnecting=false;};}
@@ -170,26 +174,24 @@ showScreen('roundEnd');const nb=document.querySelector('[data-next-round-btn]'),
 function handleRoomRestart(d){gameState='lobby';myGameComplete=false;sessionStorage.removeItem('wordle_roundComplete');updateLobby(d.roomState);showScreen('lobby');}
 function showGameEnd(d){gameState='finished';myGameComplete=false;sessionStorage.removeItem('wordle_roundComplete');showScreen('gameEnd');const pod=document.querySelector('[data-podium]');pod.innerHTML='';const t3=d.players.slice(0,3);[t3[1],t3[0],t3[2]].filter(Boolean).forEach((p,i)=>{const s=document.createElement('div');s.className='podium-spot '+['second','first','third'][i];const em=p===t3[0]?'🥇':p===t3[1]?'🥈':'🥉';s.innerHTML='<div class="pos">'+em+'</div><div class="pname">'+esc(p.name)+'</div><div class="pscore">'+p.score+' pts</div>';pod.appendChild(s);});const fs=document.querySelector('[data-final-scores]');fs.innerHTML='';d.players.forEach(p=>{const e=document.createElement('div');e.className='final-score-entry';e.innerHTML='<span class="f-rank">#'+p.rank+'</span><span class="f-name">'+esc(p.name)+'</span><span class="f-rounds">('+p.roundScores.join(' + ')+')</span><span class="f-total">'+p.score+'</span>';fs.appendChild(e);});const gw=document.querySelector('[data-game-end-words]');if(gw&&d.words){gw.innerHTML='';d.words.forEach((rw,i)=>{const de=document.createElement('div');de.className='game-end-word-entry';const def=rw.definition;let defHtml='';if(def&&def.found&&def.definition){defHtml='<em>'+esc(def.partOfSpeech||'word')+':</em> '+esc(def.definition);}else{defHtml='<em>No definition available.</em>';}de.innerHTML='<span class="gew-round">#'+(i+1)+'</span><span class="gew-word">'+esc(rw.word.toUpperCase())+'</span><span class="gew-def">'+defHtml+'</span>';gw.appendChild(de);});}const pa=document.querySelector('[data-play-again-btn]');if(pa){pa.style.display='inline-block';pa.textContent='Back to Lobby';}document.querySelector('[data-timer-display]').textContent='';}
 function startSolo(){if(!targetWords||!targetWords.length){showAlert('Word list not loaded. Refresh and try again.',3000);return;}if(ws){try{ws.close();}catch(e){}ws=null;}isSoloMode=true;gameState='playing';currentRow=0;currentGuess=[];roundSolved=false;myGameComplete=false;soloTargetWord=targetWords[Math.floor(Math.random()*targetWords.length)];resetBoard();showScreen('game');document.querySelector('[data-round-num]').textContent='1';document.querySelector('[data-total-rounds]').textContent='1';if(timerDisplay){timerDisplay.textContent='∞';timerDisplay.classList.remove('warning','danger');}if(leaderboardList)leaderboardList.innerHTML='<div class="leaderboard-entry"><span>Solo Play</span></div>';}
-function handleSolo(g){const fb=calcFb(g,soloTargetWord),solved=g===soloTargetWord;for(let i=0;i<WL;i++){const t=guessGrid.children[currentRow*WL+i];t.textContent=g[i].toUpperCase();t.dataset.state=fb[i];t.classList.add('flip');t.addEventListener('transitionend',()=>t.classList.remove('flip'),{once:true});}for(let i=0;i<WL;i++){const k=keyboardEl.querySelector('[data-key="'+g[i].toUpperCase()+'"]');if(!k)continue;const cs=k.dataset.state,ns=fb[i];if(ns==='correct'||(ns==='wrong-location'&&cs!=='correct')||(ns==='wrong'&&!cs)){k.dataset.state=ns;k.classList.remove('wrong','wrong-location','correct');k.classList.add(ns);}}if(solved){roundSolved=true;for(let i=0;i<WL;i++){const t=guessGrid.children[currentRow*WL+i];setTimeout(()=>{t.classList.add('dance');t.addEventListener('animationend',()=>t.classList.remove('dance'),{once:true});},i*100);}let soloDef=wordDefinitions[soloTargetWord]||null;
-let defSuffix='';
-if(soloDef&&soloDef.found&&soloDef.definition){
-defSuffix=' — '+soloDef.definition;
-}else{
-defSuffix=' — No definition available for this word yet.';
-}
-showAlert('Solved in '+(currentRow+1)+' '+(currentRow===0?'try':'tries')+'!'+defSuffix,5000);
-setTimeout(resetToMenu,5000);
+function handleSolo(g){const fb=calcFb(g,soloTargetWord),solved=g===soloTargetWord;for(let i=0;i<WL;i++){const t=guessGrid.children[currentRow*WL+i];t.textContent=g[i].toUpperCase();t.dataset.state=fb[i];t.classList.add('flip');t.addEventListener('transitionend',()=>t.classList.remove('flip'),{once:true});}for(let i=0;i<WL;i++){const k=keyboardEl.querySelector('[data-key="'+g[i].toUpperCase()+'"]');if(!k)continue;const cs=k.dataset.state,ns=fb[i];if(ns==='correct'||(ns==='wrong-location'&&cs!=='correct')||(ns==='wrong'&&!cs)){k.dataset.state=ns;k.classList.remove('wrong','wrong-location','correct');k.classList.add(ns);}}if(solved){roundSolved=true;for(let i=0;i<WL;i++){const t=guessGrid.children[currentRow*WL+i];setTimeout(()=>{t.classList.add('dance');t.addEventListener('animationend',()=>t.classList.remove('dance'),{once:true});},i*100);}setTimeout(()=>{showSoloComplete(true,soloTargetWord,wordDefinitions[soloTargetWord]||null);},600);
 }else if(currentRow>=WR-1){
 roundSolved=true;
-let soloDef2=wordDefinitions[soloTargetWord]||null;
-let defSuffix2='';
-if(soloDef2&&soloDef2.found&&soloDef2.definition){
-defSuffix2=' — '+soloDef2.definition;
-}else{
-defSuffix2=' — No definition available for this word yet.';
+showSoloComplete(false,soloTargetWord,wordDefinitions[soloTargetWord]||null);}currentRow++;currentGuess=[];}
+
+// Solo completion screen (solved or failed)
+function showSoloComplete(solved, word, definition) {
+  gameState = 'soloComplete';
+  soloCompleteTitle.textContent = solved ? '🎉 Solved!' : '💔 Out of Attempts';
+  soloWordEl.textContent = word.toUpperCase();
+  if (definition && definition.found && definition.definition) {
+    soloWordDefEl.innerHTML = '<em>' + esc(definition.partOfSpeech || 'word') + ':</em> ' + esc(definition.definition);
+  } else {
+    soloWordDefEl.innerHTML = '<em>No definition available for this word yet.</em>';
+  }
+  showScreen('soloComplete');
 }
-showAlert('The word was: '+soloTargetWord.toUpperCase()+defSuffix2,5000);
-setTimeout(resetToMenu,5000);}currentRow++;currentGuess=[];}
+
 function calcFb(guess,word){const r=Array(WL).fill('wrong'),wa=word.split(''),ga=guess.split(''),used=Array(WL).fill(false);for(let i=0;i<WL;i++){if(ga[i]===wa[i]){r[i]='correct';used[i]=true;}}for(let i=0;i<WL;i++){if(r[i]==='correct')continue;for(let j=0;j<WL;j++){if(!used[j]&&ga[i]===wa[j]){r[i]='wrong-location';used[j]=true;break;}}}return r;}
 function resetToMenu(){if(_reconnectTimer){clearTimeout(_reconnectTimer);_reconnectTimer=null;}_reconnecting=false;_reconnectAttempts=0;if(ws){try{ws.close();}catch(e){}}clearReconnectSession();gameState='menu';isSoloMode=false;isHost=false;roomId=null;playerId=null;soloTargetWord='';roundSolved=false;myGameComplete=false;currentRow=0;currentGuess=[];leaderboardData=[];spectateData={};resetBoard();showGodModeReenterBtn(false);showScreen('menu');}
 function renderDefinition(definition){const el=document.querySelector('[data-word-definition]');if(!el)return;if(definition&&definition.found&&definition.definition){el.innerHTML='<em>'+esc(definition.partOfSpeech||'word')+':</em> '+esc(definition.definition);}else{el.innerHTML='<em>No definition available for this word yet.</em>';}}
@@ -233,6 +235,9 @@ if(playAgainBtn)playAgainBtn.addEventListener('click',()=>{send({type:'restartGa
 // God Mode back button
 const godModeBackBtn = document.querySelector('[data-god-mode-back-btn]');
 if(godModeBackBtn)godModeBackBtn.addEventListener('click',()=>{showScreen('game');document.querySelector('[data-game-main]').style.display='';document.querySelector('[data-leaderboard]').style.display='';showGodModeReenterBtn(true);});
+// Solo Complete buttons
+document.querySelector('[data-solo-play-again]').addEventListener('click',()=>{startSolo();});
+document.querySelector('[data-solo-back-home]').addEventListener('click',()=>{resetToMenu();});
 // Keyboard click
 keyboardEl.addEventListener('pointerdown', (e) => { if (gameState !== 'playing') return; e.preventDefault(); const k = e.target.closest('[data-key]'); if (k) { keyboardEl._lastPointerDown = Date.now(); handleKey(k.dataset.key); } else if (e.target.closest('[data-enter]')) { keyboardEl._lastPointerDown = Date.now(); handleKey('Enter'); } else if (e.target.closest('[data-delete]')) { keyboardEl._lastPointerDown = Date.now(); handleKey('Backspace'); } });
 // Physical keyboard
