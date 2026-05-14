@@ -338,6 +338,14 @@ function startRound(room) {
     round: roundIndex + 1,
     totalRounds: room.settings.rounds,
     timePerRound: room.settings.timePerRound,
+    players: room.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      score: p.score,
+      solved: p.solved || false,
+      attemptsUsed: p.attemptsUsed || 0,
+      roundScores: p.roundScores || [],
+    })),
   });
   
   // Start timer

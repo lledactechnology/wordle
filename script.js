@@ -69,7 +69,7 @@ function handleServer(d){switch(d.type){case'roomCreated':playerId=d.playerId;ro
 
 function updateLobby(rs){document.querySelector('[data-room-id-display]').textContent=rs.id;document.querySelector('[data-room-code]').textContent=rs.id;document.querySelector('[data-lobby-rounds]').textContent=rs.settings.rounds;document.querySelector('[data-lobby-time]').textContent=rs.settings.timePerRound;document.querySelector('[data-lobby-players]').textContent=rs.players.length+'/'+rs.settings.maxPlayers;playerList.innerHTML='';rs.players.forEach(p=>{const b=document.createElement('div');b.className='player-badge'+(p.isHost?' host':'');b.innerHTML=(p.isHost?'<span class="crown">👑</span>':'')+'<span>'+esc(p.name)+'</span>';playerList.appendChild(b);});document.querySelector('[data-start-game-btn]').classList.toggle('hidden',!isHost);}
 function addChat(name,msg){const d=document.createElement('div');d.className='chat-msg';if(name==='system')d.innerHTML='<em style="color:gray">'+esc(msg)+'</em>';else d.innerHTML='<b style="color:#6c6">'+esc(name)+':</b> '+esc(msg);lobbyMessages.appendChild(d);lobbyMessages.scrollTop=lobbyMessages.scrollHeight;}
-function startRound(d){gameState='playing';myGameComplete=false;roundSolved=false;showGodModeReenterBtn(false);sessionStorage.removeItem('wordle_roundComplete');showScreen('game');resetBoard();updateTimer(d.timePerRound);document.querySelector('[data-round-num]').textContent=d.round;document.querySelector('[data-total-rounds]').textContent=d.totalRounds;document.querySelector('[data-game-main]').style.display='';document.querySelector('[data-leaderboard]').style.display='';}function handleReconnect(d){var rs=d.reconnectState;if(!rs)return;var state=d.gameState||d.roomState?.state||'lobby';gameState=state;currentRow=rs.guesses?rs.guesses.length:0;currentGuess=[];roundSolved=rs.solved||false;myGameComplete=rs.solved||(rs.attemptsUsed>=6);if(myGameComplete){sessionStorage.setItem('wordle_roundComplete','true');}else{sessionStorage.removeItem('wordle_roundComplete');}if(d.roomState?.players){updateLB(d.roomState.players);}if(state==='playing'){showScreen('game');resetBoard();updateTimer(d.timeRemaining??d.roomState?.timeRemaining??0);document.querySelector('[data-round-num]').textContent=typeof d.currentRound==='number'?d.currentRound+1:1;document.querySelector('[data-total-rounds]').textContent=d.totalRounds||d.roomState?.settings?.rounds||1;document.querySelector('[data-game-main]').style.display='';document.querySelector('[data-leaderboard]').style.display='';if(rs.guesses&&rs.guesses.length>0){rebuildBoard(rs.guesses);}if(myGameComplete){setTimeout(function(){enterGodMode();},1000);}return;}if(state==='roundEnd'){
+function startRound(d){gameState='playing';myGameComplete=false;roundSolved=false;showGodModeReenterBtn(false);sessionStorage.removeItem('wordle_roundComplete');showScreen('game');resetBoard();updateTimer(d.timePerRound);document.querySelector('[data-round-num]').textContent=d.round;document.querySelector('[data-total-rounds]').textContent=d.totalRounds;document.querySelector('[data-game-main]').style.display='';document.querySelector('[data-leaderboard]').style.display='';if(d.players){updateLB(d.players);}}function handleReconnect(d){var rs=d.reconnectState;if(!rs)return;var state=d.gameState||d.roomState?.state||'lobby';gameState=state;currentRow=rs.guesses?rs.guesses.length:0;currentGuess=[];roundSolved=rs.solved||false;myGameComplete=rs.solved||(rs.attemptsUsed>=6);if(myGameComplete){sessionStorage.setItem('wordle_roundComplete','true');}else{sessionStorage.removeItem('wordle_roundComplete');}if(d.roomState?.players){updateLB(d.roomState.players);}if(state==='playing'){showScreen('game');resetBoard();updateTimer(d.timeRemaining??d.roomState?.timeRemaining??0);document.querySelector('[data-round-num]').textContent=typeof d.currentRound==='number'?d.currentRound+1:1;document.querySelector('[data-total-rounds]').textContent=d.totalRounds||d.roomState?.settings?.rounds||1;document.querySelector('[data-game-main]').style.display='';document.querySelector('[data-leaderboard]').style.display='';if(rs.guesses&&rs.guesses.length>0){rebuildBoard(rs.guesses);}if(myGameComplete){setTimeout(function(){enterGodMode();},1000);}return;}if(state==='roundEnd'){
 showScreen('roundEnd');
 document.querySelector('[data-round-end-title]').textContent='Round '+(d.currentRound||1)+' Complete!';
 if(d.roomState&&d.roomState.roundWord){
@@ -82,12 +82,29 @@ function resetBoard(){currentRow=0;currentGuess=[];roundSolved=false;guessGrid.q
 function updateLB(players){if(!leaderboardList)return;leaderboardData=[...players].sort((a,b)=>b.score-a.score);leaderboardList.innerHTML='';leaderboardData.forEach((p,i)=>{const e=document.createElement('div');e.className='leaderboard-entry'+(p.id===playerId?' me':'');e.innerHTML='<span class="rank">#'+(i+1)+'</span><span class="name">'+esc(p.name)+'</span><span class="score">'+p.score+'</span><span class="solved-dot '+(p.solved?'done':'pending')+'"></span>';leaderboardList.appendChild(e);});}
 function updateProgress(d){if(d.playerId===playerId)return;const s=d.solved?('solved in '+d.attempts+' '+(d.attempts===1?'try':'tries')+' ('+d.timeTaken+'s)'):'done without solving';showAlert(d.playerName+' '+s,2500);const p=leaderboardData.find(x=>x.id===d.playerId);if(p){p.solved=true;updateLB(leaderboardData);}}
 
+// Leaderboard open function (reusable)
+function openLeaderboard() {
+  const isDesktop = window.matchMedia('(min-width: 768px)').matches;
+  const sidebar = document.querySelector('[data-leaderboard]');
+  const backdrop = document.querySelector('[data-leaderboard-backdrop]');
+  const overlay = document.querySelector('[data-leaderboard-overlay]');
+  const sheetList = document.querySelector('[data-leaderboard-sheet-list]');
+  const sidebarList = document.querySelector('[data-leaderboard-list]');
+  if (isDesktop) {
+    if (sidebar) sidebar.classList.add('open');
+    if (backdrop) backdrop.classList.add('open');
+  } else {
+    if (sheetList && sidebarList) sheetList.innerHTML = sidebarList.innerHTML;
+    if (overlay) overlay.classList.remove('hidden');
+  }
+}
+
 function handleResult(d){if(roundSolved)return;const row=currentRow;for(let i=0;i<WL;i++){const tile=guessGrid.children[row*WL+i];tile.textContent=d.guess[i].toUpperCase();tile.dataset.state=d.feedback[i];tile.classList.add('flip');tile.addEventListener('transitionend',()=>tile.classList.remove('flip'),{once:true});}for(let i=0;i<WL;i++){const key=keyboardEl.querySelector('[data-key="'+d.guess[i].toUpperCase()+'"]');if(!key)continue;const cs=key.dataset.state,ns=d.feedback[i];if(ns==='correct'||(ns==='wrong-location'&&cs!=='correct')||(ns==='wrong'&&!cs)){key.dataset.state=ns;key.classList.remove('wrong','wrong-location','correct');key.classList.add(ns);}}
 if(d.solved){roundSolved=true;myGameComplete=true;sessionStorage.setItem('wordle_roundComplete','true');showAlert('Puzzle complete — God Mode unlocked!',4000);for(let i=0;i<WL;i++){const t=guessGrid.children[row*WL+i];setTimeout(()=>{t.classList.add('dance');t.addEventListener('animationend',()=>t.classList.remove('dance'),{once:true});},i*100);}setTimeout(()=>{enterGodMode();},2000);}else if(d.attemptNumber>=6){roundSolved=true;myGameComplete=true;sessionStorage.setItem('wordle_roundComplete','true');showAlert('Out of attempts — God Mode unlocked!',4000);setTimeout(()=>{enterGodMode();},2000);}currentRow++;currentGuess=[];}
 
-function enterGodMode(){if(!myGameComplete)return;showGodModeReenterBtn(false);showScreen('godMode');if(ws&&ws.readyState===WebSocket.OPEN){send({type:'requestSpectate'});}document.querySelector('[data-game-main]').style.display='none';document.querySelector('[data-leaderboard]').style.display='none';}
+function enterGodMode(){if(!myGameComplete)return;showGodModeReenterBtn(false);showScreen('godMode');if(ws&&ws.readyState===WebSocket.OPEN){send({type:'requestSpectate'});}document.querySelector('[data-game-main]').style.display='none';document.querySelector('[data-leaderboard]').style.display='none';renderGodModeScores();}
 
-function handleSpectateInit(d){if(!myGameComplete)return;renderSpectatePlayers(d.players);}
+function handleSpectateInit(d){if(!myGameComplete)return;renderSpectatePlayers(d.players);renderGodModeScores();}
 
 function handleSpectateUpdate(d){if(!myGameComplete)return;updateSpectatePlayerBoard(d.playerId,d.guess,d.attemptNumber,d.status);}
 
@@ -123,10 +140,33 @@ function submitGuess(gs){if(roundSolved||currentRow>=WR)return;const g=gs.toLowe
 
 function handleKey(key){if(gameState!=='playing'||roundSolved)return;if(key==='Enter'){if(currentGuess.length===WL)submitGuess(currentGuess.join(''));else showAlert('Not enough letters',1000);}else if(key==='Backspace'||key==='Delete'){if(currentGuess.length>0){currentGuess.pop();const t=guessGrid.children[currentRow*WL+currentGuess.length];t.textContent='';t.dataset.state='';}if(!isSoloMode)send({type:'typingUpdate',currentGuess:[...currentGuess]});}else if(/^[a-zA-Z]$/.test(key)&&currentGuess.length<WL){currentGuess.push(key.toLowerCase());const t=guessGrid.children[currentRow*WL+currentGuess.length-1];t.textContent=key.toUpperCase();t.dataset.state='active';if(!isSoloMode)send({type:'typingUpdate',currentGuess:[...currentGuess]});}}
 
+// Round end: show per-round results and cumulative total scores
+function showRoundEndPlayers(d) {
+  const container = document.querySelector('[data-total-scores]');
+  if (!container) return;
+  container.innerHTML = '';
+  if (d.players) {
+    const sorted = [...d.players].sort((a, b) => b.score - a.score);
+    sorted.forEach((p, i) => {
+      const entry = document.createElement('div');
+      entry.className = 'total-score-entry' + (p.id === playerId ? ' me' : '');
+      const breakdown = p.roundScores.length ? '(' + p.roundScores.join(' + ') + ')' : '';
+      entry.innerHTML =
+        '<span class="ts-rank">#' + (i + 1) + '</span>' +
+        '<span class="ts-name">' + esc(p.name) + '</span>' +
+        '<span class="ts-breakdown">' + breakdown + '</span>' +
+        '<span class="ts-total">' + p.score + '</span>';
+      container.appendChild(entry);
+    });
+  }
+}
+
 function showRoundEnd(d){gameState='roundEnd';roundSolved=true;myGameComplete=false;sessionStorage.removeItem('wordle_roundComplete');document.querySelector('[data-round-end-title]').textContent='Round '+d.round+' Complete!';document.querySelector('[data-round-word]').textContent = d.word.toUpperCase();
 renderDefinition(d.definition);
 const div = document.querySelector('[data-round-results]');
-div.innerHTML='';Object.values(d.results).sort((a,b)=>b.roundScore-a.roundScore).forEach(r=>{const e=document.createElement('div');e.className='round-result-entry';e.innerHTML='<span class="r-name">'+esc(r.playerName)+'</span><span class="r-stats">'+(r.solved?('Solved in '+r.attempts+' '+(r.attempts===1?'try':'tries')+' ('+r.timeTaken+'s)'):'Did not solve')+'</span><span class="r-score">+'+r.roundScore+'</span>';div.appendChild(e);});showScreen('roundEnd');const nb=document.querySelector('[data-next-round-btn]'),td=document.querySelector('.round-end-timer'),cs=document.querySelector('[data-round-end-countdown]');if(isHost&&d.round<d.totalRounds){nb.classList.remove('hidden');td.classList.add('hidden');}else if(d.round<d.totalRounds){nb.classList.add('hidden');td.classList.remove('hidden');let c=15;cs.textContent=c;const iv=setInterval(()=>{c--;if(c<=0)clearInterval(iv);else cs.textContent=c;},1000);}else{nb.classList.add('hidden');td.classList.add('hidden');}}
+div.innerHTML='';Object.values(d.results).sort((a,b)=>b.roundScore-a.roundScore).forEach(r=>{const e=document.createElement('div');e.className='round-result-entry';e.innerHTML='<span class="r-name">'+esc(r.playerName)+'</span><span class="r-stats">'+(r.solved?('Solved in '+r.attempts+' '+(r.attempts===1?'try':'tries')+' ('+r.timeTaken+'s)'):'Did not solve')+'</span><span class="r-score">+'+r.roundScore+'</span>';div.appendChild(e);});
+showRoundEndPlayers(d);
+showScreen('roundEnd');const nb=document.querySelector('[data-next-round-btn]'),td=document.querySelector('.round-end-timer'),cs=document.querySelector('[data-round-end-countdown]');if(isHost&&d.round<d.totalRounds){nb.classList.remove('hidden');td.classList.add('hidden');}else if(d.round<d.totalRounds){nb.classList.add('hidden');td.classList.remove('hidden');let c=15;cs.textContent=c;const iv=setInterval(()=>{c--;if(c<=0)clearInterval(iv);else cs.textContent=c;},1000);}else{nb.classList.add('hidden');td.classList.add('hidden');}}
 function handleRoomRestart(d){gameState='lobby';myGameComplete=false;sessionStorage.removeItem('wordle_roundComplete');updateLobby(d.roomState);showScreen('lobby');}
 function showGameEnd(d){gameState='finished';myGameComplete=false;sessionStorage.removeItem('wordle_roundComplete');showScreen('gameEnd');const pod=document.querySelector('[data-podium]');pod.innerHTML='';const t3=d.players.slice(0,3);[t3[1],t3[0],t3[2]].filter(Boolean).forEach((p,i)=>{const s=document.createElement('div');s.className='podium-spot '+['second','first','third'][i];const em=p===t3[0]?'🥇':p===t3[1]?'🥈':'🥉';s.innerHTML='<div class="pos">'+em+'</div><div class="pname">'+esc(p.name)+'</div><div class="pscore">'+p.score+' pts</div>';pod.appendChild(s);});const fs=document.querySelector('[data-final-scores]');fs.innerHTML='';d.players.forEach(p=>{const e=document.createElement('div');e.className='final-score-entry';e.innerHTML='<span class="f-rank">#'+p.rank+'</span><span class="f-name">'+esc(p.name)+'</span><span class="f-rounds">('+p.roundScores.join(' + ')+')</span><span class="f-total">'+p.score+'</span>';fs.appendChild(e);});const gw=document.querySelector('[data-game-end-words]');if(gw&&d.words){gw.innerHTML='';d.words.forEach((rw,i)=>{const de=document.createElement('div');de.className='game-end-word-entry';const def=rw.definition;let defHtml='';if(def&&def.found&&def.definition){defHtml='<em>'+esc(def.partOfSpeech||'word')+':</em> '+esc(def.definition);}else{defHtml='<em>No definition available.</em>';}de.innerHTML='<span class="gew-round">#'+(i+1)+'</span><span class="gew-word">'+esc(rw.word.toUpperCase())+'</span><span class="gew-def">'+defHtml+'</span>';gw.appendChild(de);});}const pa=document.querySelector('[data-play-again-btn]');if(pa){pa.style.display='inline-block';pa.textContent='Back to Lobby';}document.querySelector('[data-timer-display]').textContent='';}
 function startSolo(){if(!targetWords||!targetWords.length){showAlert('Word list not loaded. Refresh and try again.',3000);return;}if(ws){try{ws.close();}catch(e){}ws=null;}isSoloMode=true;gameState='playing';currentRow=0;currentGuess=[];roundSolved=false;myGameComplete=false;soloTargetWord=targetWords[Math.floor(Math.random()*targetWords.length)];resetBoard();showScreen('game');document.querySelector('[data-round-num]').textContent='1';document.querySelector('[data-total-rounds]').textContent='1';if(timerDisplay){timerDisplay.textContent='∞';timerDisplay.classList.remove('warning','danger');}if(leaderboardList)leaderboardList.innerHTML='<div class="leaderboard-entry"><span>Solo Play</span></div>';}
@@ -154,6 +194,23 @@ function calcFb(guess,word){const r=Array(WL).fill('wrong'),wa=word.split(''),ga
 function resetToMenu(){if(_reconnectTimer){clearTimeout(_reconnectTimer);_reconnectTimer=null;}_reconnecting=false;_reconnectAttempts=0;if(ws){try{ws.close();}catch(e){}}clearReconnectSession();gameState='menu';isSoloMode=false;isHost=false;roomId=null;playerId=null;soloTargetWord='';roundSolved=false;myGameComplete=false;currentRow=0;currentGuess=[];leaderboardData=[];spectateData={};resetBoard();showGodModeReenterBtn(false);showScreen('menu');}
 function renderDefinition(definition){const el=document.querySelector('[data-word-definition]');if(!el)return;if(definition&&definition.found&&definition.definition){el.innerHTML='<em>'+esc(definition.partOfSpeech||'word')+':</em> '+esc(definition.definition);}else{el.innerHTML='<em>No definition available for this word yet.</em>';}}
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+// God Mode score rendering
+function renderGodModeScores() {
+  const container = document.querySelector('[data-god-mode-scores]');
+  if (!container || !leaderboardData.length) return;
+  container.innerHTML = '';
+  const sorted = [...leaderboardData].sort((a, b) => b.score - a.score);
+  sorted.forEach((p, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'gm-score-chip' + (p.id === playerId ? ' me' : '');
+    chip.innerHTML =
+      '<span class="gm-rank">#' + (i + 1) + '</span>' +
+      '<span class="gm-name">' + esc(p.name) + '</span>' +
+      '<span class="gm-score">' + p.score + '</span>';
+    container.appendChild(chip);
+  });
+}
 
 // Event bindings
 document.querySelector('[data-create-room-btn]').addEventListener('click',()=>showScreen('createRoom'));
@@ -219,6 +276,28 @@ document.getElementById('join-room-id').addEventListener('input',(e)=>{e.target.
   if (overlay) {
     overlay.addEventListener('click', function(e) {
       if (e.target === overlay) closeLB();
+    });
+  }
+})();
+
+// Round-end tab toggle
+(function() {
+  const resultsTab = document.querySelector('[data-round-results-tab]');
+  const totalTab = document.querySelector('[data-total-scores-tab]');
+  const resultsDiv = document.querySelector('[data-round-results]');
+  const totalDiv = document.querySelector('[data-total-scores]');
+  if (resultsTab && totalTab && resultsDiv && totalDiv) {
+    resultsTab.addEventListener('click', () => {
+      resultsTab.classList.add('active');
+      totalTab.classList.remove('active');
+      resultsDiv.classList.remove('hidden');
+      totalDiv.classList.add('hidden');
+    });
+    totalTab.addEventListener('click', () => {
+      totalTab.classList.add('active');
+      resultsTab.classList.remove('active');
+      totalDiv.classList.remove('hidden');
+      resultsDiv.classList.add('hidden');
     });
   }
 })();
