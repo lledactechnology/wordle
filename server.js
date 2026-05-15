@@ -490,6 +490,13 @@ function handlePlayerGuess(ws, data) {
     return;
   }
   
+  // Duplicate-guard: reject identical consecutive guesses (defense against rapid key-repeat or client bugs)
+  const lastGuess = guessesMade > 0 ? round.playerGuesses[player.id][guessesMade - 1] : null;
+  if (lastGuess && lastGuess.word === guess) {
+    ws.send(JSON.stringify({ type: 'guessInvalid', message: 'Duplicate guess ignored' }));
+    return;
+  }
+  
   const word = round.word;
   // Base attempt number on actual guesses stored, not on results (which are only set on solve/fail)
   const attemptNumber = guessesMade + 1;
