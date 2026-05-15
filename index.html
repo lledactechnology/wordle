@@ -260,17 +260,34 @@
     </div>
   </div>
 
-  <!-- Solo Complete Screen -->
-  <div data-solo-complete class="solo-complete hidden">
-    <div class="solo-complete-content">
-      <h2 data-solo-complete-title></h2>
-      <div class="solo-word-reveal">
+  <!-- Solo End Screen -->
+  <div data-solo-end class="solo-end hidden">
+    <div class="solo-end-content">
+      <h2 data-solo-end-title></h2>
+
+      <div class="word-reveal">
         The word was: <strong data-solo-word></strong>
       </div>
+
       <div class="word-definition" data-solo-word-definition></div>
-      <div class="solo-complete-buttons">
-        <button data-solo-play-again class="menu-btn primary">Play Again</button>
-        <button data-solo-back-home class="menu-btn">Back to Home</button>
+
+      <div class="solo-summary" data-solo-summary></div>
+
+      <div data-solo-analysis class="solo-analysis hidden">
+        <h3>Optimal Play Review</h3>
+        <div data-solo-analysis-list></div>
+      </div>
+
+      <div class="solo-end-actions">
+        <button data-view-optimal-play-btn class="menu-btn primary">
+          View Optimal Play
+        </button>
+        <button data-solo-play-again-btn class="menu-btn">
+          Play Again
+        </button>
+        <button data-solo-back-menu-btn class="menu-btn">
+          Back to Menu
+        </button>
       </div>
     </div>
   </div>

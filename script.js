@@ -19,14 +19,17 @@ const chatInput = document.querySelector('[data-chat-input]');
 const timerDisplay = document.querySelector('[data-timer-display]');
 const godModeGrid = document.querySelector('[data-god-mode-grid]');
 const godModeReenterBtn = document.querySelector('[data-god-mode-reenter-btn]');
-const soloCompleteScreen = document.querySelector('[data-solo-complete]');
-const soloCompleteTitle = document.querySelector('[data-solo-complete-title]');
+const soloEndScreen = document.querySelector('[data-solo-end]');
 const soloWordEl = document.querySelector('[data-solo-word]');
 const soloWordDefEl = document.querySelector('[data-solo-word-definition]');
 
 let ws=null,playerId=null,playerName='',roomId=null,isHost=false,gameState='menu',leaderboardData=[];
 let isSoloMode=false,soloTargetWord='',currentRow=0,currentGuess=[],roundSolved=false;
 let myGameComplete=false;
+let soloGuessHistory = [];
+let soloAnalysisCache = null;
+const SOLO_ANALYSIS_MODE = 'answers-only';
+const SOLO_ANALYSIS_TOP_N = 5;
 const WR=6,WL=5;
 
 // ── Reconnect persistence (localStorage) ──
@@ -62,7 +65,7 @@ async function loadDicts(){targetWords=await fetch('targetWords.json').then(r=>r
 
 function showAlert(msg,dur=2000){const a=document.createElement('div');a.className='alert';a.textContent=msg;ac.appendChild(a);setTimeout(()=>a.classList.add('hide'),dur-500);setTimeout(()=>a.remove(),dur);}
 
-function showScreen(sc){const m={menu:mainMenu,createRoom:createRoomModal,joinRoom:joinRoomModal,lobby,game:gameScreen,godMode:godModeScreen,roundEnd:roundEndScreen,gameEnd:gameEndScreen,soloComplete:soloCompleteScreen};Object.values(m).forEach(s=>s&&s.classList.add('hidden'));if(m[sc])m[sc].classList.remove('hidden');if(document.activeElement&&document.activeElement!==document.body)document.activeElement.blur();}
+function showScreen(sc){const m={menu:mainMenu,createRoom:createRoomModal,joinRoom:joinRoomModal,lobby,game:gameScreen,godMode:godModeScreen,roundEnd:roundEndScreen,gameEnd:gameEndScreen,soloEnd:soloEndScreen};Object.values(m).forEach(s=>s&&s.classList.add('hidden'));if(m[sc])m[sc].classList.remove('hidden');if(document.activeElement&&document.activeElement!==document.body)document.activeElement.blur();}
 function showGodModeReenterBtn(show){if(godModeReenterBtn)godModeReenterBtn.classList.toggle('hidden',!show);}
 
 let _reconnectAttempts=0,_reconnectTimer=null,_reconnecting=false;function connectWS(){if(_reconnecting)return;_reconnecting=true;if(_reconnectTimer){clearTimeout(_reconnectTimer);_reconnectTimer=null;}const p=location.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(p+'//'+location.host);ws.onopen=()=>{console.log('WS OPEN');_reconnectAttempts=0;_reconnecting=false;if(!isSoloMode){const saved=getReconnectSession();if(saved.roomId&&saved.playerName&&saved.playerToken&&!roomId){playerName=saved.playerName;send({type:'joinRoom',playerName:saved.playerName,roomId:saved.roomId,playerToken:saved.playerToken});showAlert('Reconnecting...',3000);if(sessionStorage.getItem('wordle_roundComplete')==='true'){myGameComplete=true;}}}};ws.onmessage=e=>handleServer(JSON.parse(e.data));ws.onclose=()=>{_reconnecting=false;if(gameState!=='menu'){_reconnectAttempts++;if(_reconnectAttempts>8){showAlert('Unable to reconnect. Please refresh the page.',5000);resetToMenu();return;}const delay=Math.min(3000*Math.pow(1.5,_reconnectAttempts-1),30000);console.log('WS closed, reconnecting in '+Math.round(delay/1000)+'s (attempt '+_reconnectAttempts+'/8)');_reconnectTimer=setTimeout(connectWS,delay);}};ws.onerror=e=>{console.error('WS ERR',e);_reconnecting=false;};}
@@ -173,27 +176,345 @@ showRoundEndPlayers(d);
 showScreen('roundEnd');const nb=document.querySelector('[data-next-round-btn]'),td=document.querySelector('.round-end-timer'),cs=document.querySelector('[data-round-end-countdown]');if(isHost&&d.round<d.totalRounds){nb.classList.remove('hidden');td.classList.add('hidden');}else if(d.round<d.totalRounds){nb.classList.add('hidden');td.classList.remove('hidden');let c=15;cs.textContent=c;const iv=setInterval(()=>{c--;if(c<=0)clearInterval(iv);else cs.textContent=c;},1000);}else{nb.classList.add('hidden');td.classList.add('hidden');}}
 function handleRoomRestart(d){gameState='lobby';myGameComplete=false;sessionStorage.removeItem('wordle_roundComplete');updateLobby(d.roomState);showScreen('lobby');}
 function showGameEnd(d){gameState='finished';myGameComplete=false;sessionStorage.removeItem('wordle_roundComplete');showScreen('gameEnd');const pod=document.querySelector('[data-podium]');pod.innerHTML='';const t3=d.players.slice(0,3);[t3[1],t3[0],t3[2]].filter(Boolean).forEach((p,i)=>{const s=document.createElement('div');s.className='podium-spot '+['second','first','third'][i];const em=p===t3[0]?'🥇':p===t3[1]?'🥈':'🥉';s.innerHTML='<div class="pos">'+em+'</div><div class="pname">'+esc(p.name)+'</div><div class="pscore">'+p.score+' pts</div>';pod.appendChild(s);});const fs=document.querySelector('[data-final-scores]');fs.innerHTML='';d.players.forEach(p=>{const e=document.createElement('div');e.className='final-score-entry';e.innerHTML='<span class="f-rank">#'+p.rank+'</span><span class="f-name">'+esc(p.name)+'</span><span class="f-rounds">('+p.roundScores.join(' + ')+')</span><span class="f-total">'+p.score+'</span>';fs.appendChild(e);});const gw=document.querySelector('[data-game-end-words]');if(gw&&d.words){gw.innerHTML='';d.words.forEach((rw,i)=>{const de=document.createElement('div');de.className='game-end-word-entry';const def=rw.definition;let defHtml='';if(def&&def.found&&def.definition){defHtml='<em>'+esc(def.partOfSpeech||'word')+':</em> '+esc(def.definition);}else{defHtml='<em>No definition available.</em>';}de.innerHTML='<span class="gew-round">#'+(i+1)+'</span><span class="gew-word">'+esc(rw.word.toUpperCase())+'</span><span class="gew-def">'+defHtml+'</span>';gw.appendChild(de);});}const pa=document.querySelector('[data-play-again-btn]');if(pa){pa.style.display='inline-block';pa.textContent='Back to Lobby';}document.querySelector('[data-timer-display]').textContent='';}
-function startSolo(){if(!targetWords||!targetWords.length){showAlert('Word list not loaded. Refresh and try again.',3000);return;}if(ws){try{ws.close();}catch(e){}ws=null;}isSoloMode=true;gameState='playing';currentRow=0;currentGuess=[];roundSolved=false;myGameComplete=false;soloTargetWord=targetWords[Math.floor(Math.random()*targetWords.length)];resetBoard();showScreen('game');document.querySelector('[data-round-num]').textContent='1';document.querySelector('[data-total-rounds]').textContent='1';if(timerDisplay){timerDisplay.textContent='∞';timerDisplay.classList.remove('warning','danger');}if(leaderboardList)leaderboardList.innerHTML='<div class="leaderboard-entry"><span>Solo Play</span></div>';}
-function handleSolo(g){const fb=calcFb(g,soloTargetWord),solved=g===soloTargetWord;for(let i=0;i<WL;i++){const t=guessGrid.children[currentRow*WL+i];t.textContent=g[i].toUpperCase();t.dataset.state=fb[i];t.classList.add('flip');t.addEventListener('transitionend',()=>t.classList.remove('flip'),{once:true});}for(let i=0;i<WL;i++){const k=keyboardEl.querySelector('[data-key="'+g[i].toUpperCase()+'"]');if(!k)continue;const cs=k.dataset.state,ns=fb[i];if(ns==='correct'||(ns==='wrong-location'&&cs!=='correct')||(ns==='wrong'&&!cs)){k.dataset.state=ns;k.classList.remove('wrong','wrong-location','correct');k.classList.add(ns);}}if(solved){roundSolved=true;for(let i=0;i<WL;i++){const t=guessGrid.children[currentRow*WL+i];setTimeout(()=>{t.classList.add('dance');t.addEventListener('animationend',()=>t.classList.remove('dance'),{once:true});},i*100);}setTimeout(()=>{showSoloComplete(true,soloTargetWord,wordDefinitions[soloTargetWord]||null);},600);
+function startSolo(){if(!targetWords||!targetWords.length){showAlert('Word list not loaded. Refresh and try again.',3000);return;}if(ws){try{ws.close();}catch(e){}ws=null;}isSoloMode=true;gameState='playing';currentRow=0;currentGuess=[];roundSolved=false;myGameComplete=false;soloTargetWord=targetWords[Math.floor(Math.random()*targetWords.length)];soloGuessHistory=[];soloAnalysisCache=null;resetBoard();showScreen('game');document.querySelector('[data-round-num]').textContent='1';document.querySelector('[data-total-rounds]').textContent='1';if(timerDisplay){timerDisplay.textContent='∞';timerDisplay.classList.remove('warning','danger');}if(leaderboardList)leaderboardList.innerHTML='<div class="leaderboard-entry"><span>Solo Play</span></div>';}
+function handleSolo(g){const fb=calcFb(g,soloTargetWord),solved=g===soloTargetWord;soloGuessHistory.push({guess:g,feedback:fb,attemptNumber:currentRow+1,solved});for(let i=0;i<WL;i++){const t=guessGrid.children[currentRow*WL+i];t.textContent=g[i].toUpperCase();t.dataset.state=fb[i];t.classList.add('flip');t.addEventListener('transitionend',()=>t.classList.remove('flip'),{once:true});}for(let i=0;i<WL;i++){const k=keyboardEl.querySelector('[data-key="'+g[i].toUpperCase()+'"]');if(!k)continue;const cs=k.dataset.state,ns=fb[i];if(ns==='correct'||(ns==='wrong-location'&&cs!=='correct')||(ns==='wrong'&&!cs)){k.dataset.state=ns;k.classList.remove('wrong','wrong-location','correct');k.classList.add(ns);}}if(solved){roundSolved=true;for(let i=0;i<WL;i++){const t=guessGrid.children[currentRow*WL+i];setTimeout(()=>{t.classList.add('dance');t.addEventListener('animationend',()=>t.classList.remove('dance'),{once:true});},i*100);}setTimeout(()=>{showSoloEnd(true);},1200);
 }else if(currentRow>=WR-1){
 roundSolved=true;
-showSoloComplete(false,soloTargetWord,wordDefinitions[soloTargetWord]||null);}currentRow++;currentGuess=[];}
+setTimeout(()=>{showSoloEnd(false);},800);}currentRow++;currentGuess=[];}
 
-// Solo completion screen (solved or failed)
-function showSoloComplete(solved, word, definition) {
-  gameState = 'soloComplete';
-  soloCompleteTitle.textContent = solved ? '🎉 Solved!' : '💔 Out of Attempts';
-  soloWordEl.textContent = word.toUpperCase();
-  if (definition && definition.found && definition.definition) {
-    soloWordDefEl.innerHTML = '<em>' + esc(definition.partOfSpeech || 'word') + ':</em> ' + esc(definition.definition);
-  } else {
-    soloWordDefEl.innerHTML = '<em>No definition available for this word yet.</em>';
+// ── Solo end screen ──
+function showSoloEnd(won) {
+  gameState = 'soloEnd';
+  const title = document.querySelector('[data-solo-end-title]');
+  const summary = document.querySelector('[data-solo-summary]');
+  const analysis = document.querySelector('[data-solo-analysis]');
+  const analysisList = document.querySelector('[data-solo-analysis-list]');
+  if (title) {
+    title.textContent = won
+      ? 'Solved in ' + soloGuessHistory.length + ' guesses!'
+      : 'Out of guesses!';
   }
-  showScreen('soloComplete');
+  soloWordEl.textContent = soloTargetWord.toUpperCase();
+  const def = wordDefinitions[soloTargetWord] || null;
+  renderSoloDefinition(def);
+  if (summary) {
+    summary.innerHTML = won
+      ? '<p>You solved the puzzle. Want to see how close your guesses were to optimal?</p>'
+      : '<p>You did not solve this one. Review the optimal path to see what would have narrowed it down faster.</p>';
+  }
+  if (analysis) analysis.classList.add('hidden');
+  if (analysisList) analysisList.innerHTML = '';
+  showScreen('soloEnd');
+}
+
+function renderSoloDefinition(definition) {
+  const el = document.querySelector('[data-solo-word-definition]');
+  if (!el) return;
+  if (definition && definition.found && definition.definition) {
+    el.innerHTML = '<em>' + esc(definition.partOfSpeech || 'word') + ':</em> ' + esc(definition.definition);
+  } else {
+    el.innerHTML = '<em>No definition available for this word yet.</em>';
+  }
 }
 
 function calcFb(guess,word){const r=Array(WL).fill('wrong'),wa=word.split(''),ga=guess.split(''),used=Array(WL).fill(false);for(let i=0;i<WL;i++){if(ga[i]===wa[i]){r[i]='correct';used[i]=true;}}for(let i=0;i<WL;i++){if(r[i]==='correct')continue;for(let j=0;j<WL;j++){if(!used[j]&&ga[i]===wa[j]){r[i]='wrong-location';used[j]=true;break;}}}return r;}
-function resetToMenu(){if(_reconnectTimer){clearTimeout(_reconnectTimer);_reconnectTimer=null;}_reconnecting=false;_reconnectAttempts=0;if(ws){try{ws.close();}catch(e){}}clearReconnectSession();gameState='menu';isSoloMode=false;isHost=false;roomId=null;playerId=null;soloTargetWord='';roundSolved=false;myGameComplete=false;currentRow=0;currentGuess=[];leaderboardData=[];spectateData={};resetBoard();showGodModeReenterBtn(false);showScreen('menu');}
+function resetToMenu(){if(_reconnectTimer){clearTimeout(_reconnectTimer);_reconnectTimer=null;}_reconnecting=false;_reconnectAttempts=0;if(ws){try{ws.close();}catch(e){}}clearReconnectSession();gameState='menu';isSoloMode=false;isHost=false;roomId=null;playerId=null;soloTargetWord='';roundSolved=false;myGameComplete=false;currentRow=0;currentGuess=[];leaderboardData=[];spectateData={};soloGuessHistory=[];soloAnalysisCache=null;resetBoard();showGodModeReenterBtn(false);showScreen('menu');}
+
+// ── Optimal Analysis Engine ──
+function feedbackToPattern(feedback) {
+  return feedback.join('|');
+}
+
+function filterPossibleAnswers(possibleAnswers, guess, feedback) {
+  const targetPattern = feedbackToPattern(feedback);
+  return possibleAnswers.filter(answer => {
+    const pattern = feedbackToPattern(calcFb(guess, answer));
+    return pattern === targetPattern;
+  });
+}
+
+function scoreGuessByExpectedRemaining(guess, possibleAnswers) {
+  const buckets = {};
+  const total = possibleAnswers.length;
+  for (const answer of possibleAnswers) {
+    const pattern = feedbackToPattern(calcFb(guess, answer));
+    buckets[pattern] = (buckets[pattern] || 0) + 1;
+  }
+  const bucketSizes = Object.values(buckets);
+  const expectedRemaining = bucketSizes.reduce((sum, size) => {
+    return sum + (size * size) / total;
+  }, 0);
+  const worstCaseRemaining = Math.max(...bucketSizes);
+  const guaranteedSolveChance = possibleAnswers.includes(guess) ? 1 / total : 0;
+  return { guess, expectedRemaining, worstCaseRemaining, bucketCount: bucketSizes.length, guaranteedSolveChance };
+}
+
+function getAllowedAnalysisGuesses() {
+  if (SOLO_ANALYSIS_MODE === 'answers-only') {
+    return [...targetWords];
+  }
+  return [...new Set([...dictionary, ...targetWords])];
+}
+
+function rankOptimalGuesses(possibleAnswers, allowedGuesses) {
+  if (possibleAnswers.length === 1) {
+    return [{
+      guess: possibleAnswers[0],
+      expectedRemaining: 1,
+      worstCaseRemaining: 1,
+      bucketCount: 1,
+      guaranteedSolveChance: 1,
+    }];
+  }
+  const ranked = allowedGuesses.map(guess => scoreGuessByExpectedRemaining(guess, possibleAnswers));
+  ranked.sort((a, b) => {
+    if (a.expectedRemaining !== b.expectedRemaining) return a.expectedRemaining - b.expectedRemaining;
+    if (a.worstCaseRemaining !== b.worstCaseRemaining) return a.worstCaseRemaining - b.worstCaseRemaining;
+    const aIsAnswer = possibleAnswers.includes(a.guess);
+    const bIsAnswer = possibleAnswers.includes(b.guess);
+    if (aIsAnswer !== bIsAnswer) return aIsAnswer ? -1 : 1;
+    return a.guess.localeCompare(b.guess);
+  });
+  return ranked;
+}
+
+function calculateOptimalityPercent(bestExpected, userExpected) {
+  if (!Number.isFinite(bestExpected) || !Number.isFinite(userExpected)) return 0;
+  if (userExpected <= 0) return 100;
+  return Math.max(0, Math.min(100, Math.round((bestExpected / userExpected) * 100)));
+}
+
+function getOptimalityRating(percent) {
+  if (percent >= 95) return { label: 'Brilliant', emoji: '🌟', cssClass: 'brilliant' };
+  if (percent >= 85) return { label: 'Solid', emoji: '✅', cssClass: 'solid' };
+  if (percent >= 70) return { label: 'Risky', emoji: '⚠️', cssClass: 'risky' };
+  return { label: 'Wasted', emoji: '❌', cssClass: 'wasted' };
+}
+
+function analyzeSoloGame() {
+  if (soloAnalysisCache) return soloAnalysisCache;
+  const allowedGuesses = getAllowedAnalysisGuesses();
+  let possibleAnswers = [...targetWords];
+  const review = [];
+  for (const entry of soloGuessHistory) {
+    const possibleBefore = possibleAnswers.length;
+    const ranked = rankOptimalGuesses(possibleAnswers, allowedGuesses);
+    const userRankIndex = ranked.findIndex(r => r.guess === entry.guess);
+    const userRank = userRankIndex >= 0 ? userRankIndex + 1 : null;
+    const best = ranked[0];
+    const userScore = userRankIndex >= 0
+      ? ranked[userRankIndex]
+      : scoreGuessByExpectedRemaining(entry.guess, possibleAnswers);
+    const possibleAfterArray = filterPossibleAnswers(possibleAnswers, entry.guess, entry.feedback);
+    const possibleAfterCount = possibleAfterArray.length;
+    const optimalityPercent = calculateOptimalityPercent(best.expectedRemaining, userScore.expectedRemaining);
+    const rating = getOptimalityRating(optimalityPercent);
+    // Luck: how much better/worse actual outcome was vs expected
+    const luckData = calculateLuck(userScore.expectedRemaining, possibleAfterCount);
+    // Remaining words list (only if small enough to show inline)
+    const remainingWords = possibleAfterCount > 0 && possibleAfterCount <= 20
+      ? possibleAfterArray.map(a => a.toUpperCase())
+      : [];
+    // Plain English explanation
+    const explanation = generateExplanation({
+      guess: entry.guess,
+      attemptNumber: entry.attemptNumber,
+      solved: entry.solved,
+      optimalityPercent,
+      rating,
+      userRank,
+      totalRanked: ranked.length,
+      bestGuess: best.guess,
+      bestExpectedRemaining: best.expectedRemaining,
+      userExpectedRemaining: userScore.expectedRemaining,
+      possibleBefore,
+      possibleAfter: possibleAfterCount,
+      userWorstCaseRemaining: userScore.worstCaseRemaining,
+      bestWorstCaseRemaining: best.worstCaseRemaining,
+    });
+    review.push({
+      attemptNumber: entry.attemptNumber,
+      guess: entry.guess,
+      feedback: entry.feedback,
+      solved: entry.solved,
+      possibleBefore,
+      possibleAfter: possibleAfterCount,
+      possibleAfterWords: possibleAfterArray,
+      bestGuess: best.guess,
+      bestExpectedRemaining: best.expectedRemaining,
+      bestWorstCaseRemaining: best.worstCaseRemaining,
+      userRank,
+      totalRanked: ranked.length,
+      userExpectedRemaining: userScore.expectedRemaining,
+      userWorstCaseRemaining: userScore.worstCaseRemaining,
+      optimalityPercent,
+      rating,
+      luckData,
+      explanation,
+      remainingWords,
+      topSuggestions: ranked.slice(0, SOLO_ANALYSIS_TOP_N),
+    });
+    possibleAnswers = possibleAfterArray;
+  }
+  soloAnalysisCache = review;
+  return review;
+}
+
+function renderSoloAnalysis() {
+  const analysis = document.querySelector('[data-solo-analysis]');
+  const list = document.querySelector('[data-solo-analysis-list]');
+  if (!analysis || !list) return;
+  const review = analyzeSoloGame();
+  list.innerHTML = '';
+  review.forEach(item => {
+    const rating = item.rating;
+    const card = document.createElement('div');
+    card.className = 'solo-analysis-card rating-' + rating.cssClass;
+    const userRankText = item.userRank !== null
+      ? '#' + item.userRank + ' / ' + item.totalRanked
+      : 'Dictionary guess — not in answers-only ranking';
+    const solvedHtml = item.solved
+      ? '<div class="solo-analysis-solved">🎉 Solved!</div>'
+      : '';
+
+    // Skill meter — color-blindness friendly: blueish-green for positive, orange-red for negative
+    const skillPercent = item.optimalityPercent;
+    const skillColor = skillPercent >= 95 ? '#4ADE80' : skillPercent >= 85 ? '#14b8a6' : skillPercent >= 70 ? '#eab308' : '#FF5252';
+    // Luck meter
+    const luck = item.luckData;
+
+    // Remaining words section
+    let remainingHtml = '';
+    if (item.solved) {
+      remainingHtml = `<div class="solo-remaining-words">Words before: <strong>${item.possibleBefore}</strong> → Solved!</div>`;
+    } else if (item.possibleAfter === 0) {
+      remainingHtml = `<div class="solo-remaining-words" style="color:#ef4444;">⚠️ Your guess eliminated all possible answers — this shouldn't happen!</div>`;
+    } else if (item.possibleAfter === 1 && item.remainingWords.length === 1) {
+      remainingHtml = `
+        <div class="solo-remaining-words">Words before: <strong>${item.possibleBefore}</strong> → Words after: <strong>${item.possibleAfter}</strong></div>
+        <div class="solo-only-word-section">
+          <span class="solo-only-word-icon">🎯</span>
+          <div>
+            <strong>The only word left was</strong>
+            <span class="solo-only-word">${esc(item.remainingWords[0])}</span>
+          </div>
+        </div>`;
+    } else {
+      remainingHtml = `<div class="solo-remaining-words">Words before: <strong>${item.possibleBefore}</strong> → Words after: <strong>${item.possibleAfter}</strong>`;
+      if (item.remainingWords.length > 0) {
+        remainingHtml += `
+          <details style="margin-top:6px;">
+            <summary>See the ${item.possibleAfter} words</summary>
+            <div class="solo-word-list">
+              ${item.remainingWords.map(w => `<span class="solo-word-chip">${esc(w)}</span>`).join('')}
+            </div>
+          </details>`;
+      }
+      remainingHtml += `</div>`;
+    }
+
+    // Raw stats collapsible (for power users)
+    const rawStatsHtml = `
+      <details class="solo-raw-stats">
+        <summary>📊 Raw stats</summary>
+        <div class="solo-raw-stats-grid">
+          <div><strong>Rank</strong><span>${esc(userRankText)}</span></div>
+          <div><strong>Best word</strong><span>${esc(item.bestGuess.toUpperCase())}</span></div>
+          <div><strong>Your expected remaining</strong><span>${item.userExpectedRemaining.toFixed(1)}</span></div>
+          <div><strong>Best expected remaining</strong><span>${item.bestExpectedRemaining.toFixed(1)}</span></div>
+          <div><strong>Your worst case</strong><span>${item.userWorstCaseRemaining}</span></div>
+          <div><strong>Best worst case</strong><span>${item.bestWorstCaseRemaining}</span></div>
+        </div>
+      </details>`;
+
+    card.innerHTML = `
+      <div class="solo-analysis-header">
+        <span class="solo-attempt">Guess ${item.attemptNumber}</span>
+        <span class="solo-guess">${esc(item.guess.toUpperCase())}</span>
+        <span class="solo-rating">${rating.emoji} ${rating.label}</span>
+      </div>
+      ${solvedHtml}
+      <div class="solo-meters">
+        <div class="solo-meter">
+          <div class="solo-meter-label">Skill</div>
+          <div class="solo-meter-bar">
+            <div class="solo-meter-fill" style="width:${skillPercent}%;background:${skillColor};"></div>
+          </div>
+          <div class="solo-meter-value" style="color:${skillColor};">${skillPercent}% ${rating.label}</div>
+        </div>
+        <div class="solo-meter">
+          <div class="solo-meter-label">Luck</div>
+          <div class="solo-meter-bar">
+            <div class="solo-meter-fill" style="width:${luck.percent}%;background:${luck.color};"></div>
+          </div>
+          <div class="solo-meter-value" style="color:${luck.color};">${luck.label}</div>
+        </div>
+      </div>
+      <div class="solo-explanation">${item.explanation}</div>
+      ${remainingHtml}
+      <details class="solo-top-suggestions">
+        <summary>Top suggested words</summary>
+        <ol>
+          ${item.topSuggestions.map(s => `
+            <li><strong>${esc(s.guess.toUpperCase())}</strong> — average ${s.expectedRemaining.toFixed(1)} left, worst case ${s.worstCaseRemaining}</li>
+          `).join('')}
+        </ol>
+      </details>
+      ${rawStatsHtml}
+    `;
+    list.appendChild(card);
+  });
+  analysis.classList.remove('hidden');
+}
+
+// ── Luck Calculation ──
+function calculateLuck(userExpectedRemaining, actualRemaining) {
+  if (actualRemaining === 0) actualRemaining = 1;
+  const ratio = actualRemaining / userExpectedRemaining;
+  // Color-blindness friendly: blueish-green for lucky, orange-red for unlucky
+  if (ratio <= 0.3) return { label: '🍀 Lucky', percent: 95, color: '#4ADE80' };
+  if (ratio <= 0.7) return { label: '🍀 Somewhat Lucky', percent: 75, color: '#86efac' };
+  if (ratio <= 1.3) return { label: '➡️ Expected', percent: 50, color: '#9ca3af' };
+  if (ratio <= 2.0) return { label: '😬 Unlucky', percent: 25, color: '#f97316' };
+  return { label: '💀 Very Unlucky', percent: 5, color: '#FF5252' };
+}
+
+// ── Plain English Explanation Generator ──
+function generateExplanation(item) {
+  const { guess, attemptNumber, solved, optimalityPercent, rating, userRank, totalRanked, bestGuess, bestExpectedRemaining, userExpectedRemaining, possibleBefore, possibleAfter, userWorstCaseRemaining, bestWorstCaseRemaining } = item;
+  const g = guess.toUpperCase();
+  const bg = bestGuess.toUpperCase();
+
+  if (solved && attemptNumber === 1) {
+    return `Incredible — you solved it on the first try! That's either a brilliant guess or incredible luck (or both). The word was ${g}.`;
+  }
+  if (solved) {
+    const eliminated = possibleBefore - possibleAfter;
+    return `You solved it in ${attemptNumber} guesses! Your guess eliminated ${eliminated} possible answer${eliminated === 1 ? '' : 's'} and found the word ${g}.`;
+  }
+
+  const rankFraction = userRank !== null ? `#${userRank} of ${totalRanked}` : 'unranked (custom word)';
+
+  if (optimalityPercent >= 95) {
+    const eliminated = possibleBefore - possibleAfter;
+    const diff = (userExpectedRemaining - bestExpectedRemaining).toFixed(1);
+    return `${g} was an excellent choice (ranked ${rankFraction}). It eliminated ${eliminated} of ${possibleBefore} possible answers. The best word ${bg} was only slightly better — just ${diff} fewer words on average.`;
+  }
+  if (optimalityPercent >= 85) {
+    const diff = Math.round(userExpectedRemaining - bestExpectedRemaining);
+    return `${g} was a solid guess (ranked ${rankFraction}). The best word ${bg} would have left about ${bestExpectedRemaining.toFixed(1)} words on average vs ${userExpectedRemaining.toFixed(1)} for your guess — a difference of ${diff}.`;
+  }
+  if (optimalityPercent >= 70) {
+    const betterCount = userRank !== null ? Math.max(0, userRank - 1) : 0;
+    const pctEliminated = possibleBefore > 0 ? Math.round((possibleBefore - possibleAfter) / possibleBefore * 100) : 0;
+    return `${g} was a risky choice (ranked ${rankFraction}). There ${betterCount === 1 ? 'was 1 word' : `were ${betterCount} words`} that would have been better. The optimal word ${bg} would have reduced it to ~${bestExpectedRemaining.toFixed(1)} words on average, while yours left ~${userExpectedRemaining.toFixed(1)} (eliminated ${pctEliminated}% of possibilities).`;
+  }
+  // Wasted
+  const betterCount = userRank !== null ? Math.max(0, userRank - 1) : 0;
+  const pctEliminated = possibleBefore > 0 ? Math.round((possibleBefore - possibleAfter) / possibleBefore * 100) : 0;
+  return `${g} was not an efficient guess (ranked ${rankFraction}${userRank !== null ? '' : ''}). It only eliminated ${pctEliminated}% of possible answers. The best word ${bg} would have left ~${bestExpectedRemaining.toFixed(1)} words on average vs ${userExpectedRemaining.toFixed(1)} for your guess. ` +
+    (betterCount > 0 ? `There ${betterCount === 1 ? 'was' : 'were'} ${betterCount} better word${betterCount === 1 ? '' : 's'} to try.` : '');
+}
 function renderDefinition(definition){const el=document.querySelector('[data-word-definition]');if(!el)return;if(definition&&definition.found&&definition.definition){el.innerHTML='<em>'+esc(definition.partOfSpeech||'word')+':</em> '+esc(definition.definition);}else{el.innerHTML='<em>No definition available for this word yet.</em>';}}
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 
@@ -235,9 +556,10 @@ if(playAgainBtn)playAgainBtn.addEventListener('click',()=>{send({type:'restartGa
 // God Mode back button
 const godModeBackBtn = document.querySelector('[data-god-mode-back-btn]');
 if(godModeBackBtn)godModeBackBtn.addEventListener('click',()=>{showScreen('game');document.querySelector('[data-game-main]').style.display='';document.querySelector('[data-leaderboard]').style.display='';showGodModeReenterBtn(true);});
-// Solo Complete buttons
-document.querySelector('[data-solo-play-again]').addEventListener('click',()=>{startSolo();});
-document.querySelector('[data-solo-back-home]').addEventListener('click',()=>{resetToMenu();});
+// Solo End buttons
+document.querySelector('[data-view-optimal-play-btn]')?.addEventListener('click', renderSoloAnalysis);
+document.querySelector('[data-solo-play-again-btn]')?.addEventListener('click', startSolo);
+document.querySelector('[data-solo-back-menu-btn]')?.addEventListener('click', resetToMenu);
 // Keyboard click
 keyboardEl.addEventListener('pointerdown', (e) => { if (gameState !== 'playing') return; e.preventDefault(); const k = e.target.closest('[data-key]'); if (k) { keyboardEl._lastPointerDown = Date.now(); handleKey(k.dataset.key); } else if (e.target.closest('[data-enter]')) { keyboardEl._lastPointerDown = Date.now(); handleKey('Enter'); } else if (e.target.closest('[data-delete]')) { keyboardEl._lastPointerDown = Date.now(); handleKey('Backspace'); } });
 // Physical keyboard
