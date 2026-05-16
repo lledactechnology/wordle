@@ -26,6 +26,11 @@ const soloWordDefEl = document.querySelector('[data-solo-word-definition]');
 let ws=null,playerId=null,playerName='',roomId=null,isHost=false,gameState='menu',leaderboardData=[];
 let isSoloMode=false,soloTargetWord='',currentRow=0,currentGuess=[],roundSolved=false;
 let _guessInProgress = false; // prevents duplicate submissions while awaiting server response
+let _lastGuessWord = '';      // dedup: last word submitted
+let _lastGuessTime = 0;       // dedup: timestamp of last submission
+let _lastKeyDownTime = 0;     // cross-directional guard: last physical keydown
+let _lastPointerDownTime = 0; // cross-directional guard: last on-screen tap
+const DEDUP_WINDOW_MS = 5000; // block same word if submitted again within 5 seconds
 let myGameComplete=false;
 let soloGuessHistory = [];
 let soloAnalysisCache = null;
@@ -71,9 +76,9 @@ function showGodModeReenterBtn(show){if(godModeReenterBtn)godModeReenterBtn.clas
 
 let _reconnectAttempts=0,_reconnectTimer=null,_reconnecting=false;function connectWS(){if(_reconnecting)return;_reconnecting=true;if(_reconnectTimer){clearTimeout(_reconnectTimer);_reconnectTimer=null;}const p=location.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(p+'//'+location.host);ws.onopen=()=>{console.log('WS OPEN');_reconnectAttempts=0;_reconnecting=false;if(!isSoloMode){const saved=getReconnectSession();if(saved.roomId&&saved.playerName&&saved.playerToken&&!roomId){playerName=saved.playerName;send({type:'joinRoom',playerName:saved.playerName,roomId:saved.roomId,playerToken:saved.playerToken});showAlert('Reconnecting...',3000);if(sessionStorage.getItem('wordle_roundComplete')==='true'){myGameComplete=true;}}}};ws.onmessage=e=>handleServer(JSON.parse(e.data));ws.onclose=()=>{_reconnecting=false;if(gameState!=='menu'){_reconnectAttempts++;if(_reconnectAttempts>8){showAlert('Unable to reconnect. Please refresh the page.',5000);resetToMenu();return;}const delay=Math.min(3000*Math.pow(1.5,_reconnectAttempts-1),30000);console.log('WS closed, reconnecting in '+Math.round(delay/1000)+'s (attempt '+_reconnectAttempts+'/8)');_reconnectTimer=setTimeout(connectWS,delay);}};ws.onerror=e=>{console.error('WS ERR',e);_reconnecting=false;};}
 
-function send(data){if(ws&&ws.readyState===WebSocket.OPEN){ws.send(JSON.stringify(data));return true;}else{_guessInProgress=false;showAlert('Connection lost — reconnecting...',2000);if(gameState!=='menu'&&!_reconnecting&&(!ws||ws.readyState!==WebSocket.CONNECTING)){connectWS();}return false;}}
+function send(data){if(ws&&ws.readyState===WebSocket.OPEN){ws.send(JSON.stringify(data));return true;}else{console.log('[DBG] send() FAILED | readyState='+(ws?ws.readyState:'null')+' | _reconnecting='+_reconnecting+' | data.type='+(data&&data.type||'?'));showAlert('Connection lost — reconnecting...',2000);if(gameState!=='menu'&&!_reconnecting&&(!ws||ws.readyState!==WebSocket.CONNECTING)){connectWS();}return false;}}
 
-function handleServer(d){switch(d.type){case'roomCreated':playerId=d.playerId;roomId=d.roomId;isHost=true;myGameComplete=false;saveReconnectSession(roomId,playerName,d.playerToken||'');sessionStorage.removeItem('wordle_roundComplete');updateLobby(d.roomState);showScreen('lobby');showAlert('Room created!',3000);break;case'roomJoined':playerId=d.playerId;roomId=d.roomId;{const me=d.roomState&&d.roomState.players?d.roomState.players.find(p=>p.id===d.playerId):null;isHost=me?me.isHost:false;}if(d.playerToken){saveReconnectSession(roomId,playerName||localStorage.getItem('wordle_playerName')||'',d.playerToken);}if(d.reconnectState){handleReconnect(d);}else{updateLobby(d.roomState);showScreen('lobby');}if(myGameComplete&&d.roomState&&d.roomState.state==='playing'){send({type:'requestSpectate'});}break;case'error':showAlert(d.message,3000);if(d.message==='Room not found'){clearReconnectSession();resetToMenu();}break;case'playerJoined':updateLobby(d.roomState);addChat('system',d.player.name+' joined');break;case'playerRejoined':updateLobby(d.roomState);addChat('system',d.player.name+' reconnected');if(gameState==='playing')updateLB(d.roomState.players);break;case'playerLeft':updateLobby(d.roomState);addChat('system',d.playerName+' left');if(gameState==='playing')updateLB(d.roomState.players);break;case'hostAssigned':isHost=true;showAlert('You are host now',2000);break;case'chatMessage':addChat(d.playerName,d.message);break;case'roundStart':startRound(d);break;case'timerUpdate':updateTimer(d.timeRemaining);break;case'guessResult':handleResult(d);break;case'guessInvalid':showAlert(d.message,1500);break;case'alreadySolved':showAlert('Already solved!',1500);break;case'playerProgress':updateProgress(d);break;case'roundEnd':showRoundEnd(d);break;case'gameEnd':showGameEnd(d);break;case'roomRestarted':handleRoomRestart(d);break;case'spectateInit':handleSpectateInit(d);break;case'spectateUpdate':handleSpectateUpdate(d);break;case'spectatePlayerLeft':handleSpectatePlayerLeft(d);break;case'spectateTypingUpdate':handleSpectateTypingUpdate(d);break;}}
+function handleServer(d){switch(d.type){case'roomCreated':playerId=d.playerId;roomId=d.roomId;isHost=true;myGameComplete=false;saveReconnectSession(roomId,playerName,d.playerToken||'');sessionStorage.removeItem('wordle_roundComplete');updateLobby(d.roomState);showScreen('lobby');showAlert('Room created!',3000);break;case'roomJoined':playerId=d.playerId;roomId=d.roomId;{const me=d.roomState&&d.roomState.players?d.roomState.players.find(p=>p.id===d.playerId):null;isHost=me?me.isHost:false;}if(d.playerToken){saveReconnectSession(roomId,playerName||localStorage.getItem('wordle_playerName')||'',d.playerToken);}if(d.reconnectState){handleReconnect(d);}else{updateLobby(d.roomState);showScreen('lobby');}if(myGameComplete&&d.roomState&&d.roomState.state==='playing'){send({type:'requestSpectate'});}break;case'error':showAlert(d.message,3000);if(d.message==='Room not found'){clearReconnectSession();resetToMenu();}break;case'playerJoined':updateLobby(d.roomState);addChat('system',d.player.name+' joined');break;case'playerRejoined':updateLobby(d.roomState);addChat('system',d.player.name+' reconnected');if(gameState==='playing')updateLB(d.roomState.players);break;case'playerLeft':updateLobby(d.roomState);addChat('system',d.playerName+' left');if(gameState==='playing')updateLB(d.roomState.players);break;case'hostAssigned':isHost=true;showAlert('You are host now',2000);break;case'chatMessage':addChat(d.playerName,d.message);break;case'roundStart':startRound(d);break;case'timerUpdate':updateTimer(d.timeRemaining);break;case'guessResult':handleResult(d);break;case'guessInvalid':console.log('[DBG] server guessInvalid | msg='+d.message+' | _guessInProgress='+_guessInProgress);_guessInProgress=false;showAlert(d.message,1500);break;case'alreadySolved':console.log('[DBG] server alreadySolved | _guessInProgress='+_guessInProgress);_guessInProgress=false;showAlert('Already solved!',1500);break;case'playerProgress':updateProgress(d);break;case'roundEnd':showRoundEnd(d);break;case'gameEnd':showGameEnd(d);break;case'roomRestarted':handleRoomRestart(d);break;case'spectateInit':handleSpectateInit(d);break;case'spectateUpdate':handleSpectateUpdate(d);break;case'spectatePlayerLeft':handleSpectatePlayerLeft(d);break;case'spectateTypingUpdate':handleSpectateTypingUpdate(d);break;}}
 
 function updateLobby(rs){document.querySelector('[data-room-id-display]').textContent=rs.id;document.querySelector('[data-room-code]').textContent=rs.id;document.querySelector('[data-lobby-rounds]').textContent=rs.settings.rounds;document.querySelector('[data-lobby-time]').textContent=rs.settings.timePerRound;document.querySelector('[data-lobby-players]').textContent=rs.players.length+'/'+rs.settings.maxPlayers;playerList.innerHTML='';rs.players.forEach(p=>{const b=document.createElement('div');b.className='player-badge'+(p.isHost?' host':'');b.innerHTML=(p.isHost?'<span class="crown">👑</span>':'')+'<span>'+esc(p.name)+'</span>';playerList.appendChild(b);});document.querySelector('[data-start-game-btn]').classList.toggle('hidden',!isHost);}
 function addChat(name,msg){const d=document.createElement('div');d.className='chat-msg';if(name==='system')d.innerHTML='<em style="color:gray">'+esc(msg)+'</em>';else d.innerHTML='<b style="color:#6c6">'+esc(name)+':</b> '+esc(msg);lobbyMessages.appendChild(d);lobbyMessages.scrollTop=lobbyMessages.scrollHeight;}
@@ -108,6 +113,7 @@ function openLeaderboard() {
 }
 
 function handleResult(d){
+  console.log('[DBG] handleResult | guess='+d.guess+' | attempt='+d.attemptNumber+' | solved='+d.solved+' | _guessInProgress was='+_guessInProgress+' | roundSolved was='+roundSolved);
   _guessInProgress = false; // release lock — server responded
   if(roundSolved)return;
   const row=currentRow;for(let i=0;i<WL;i++){const tile=guessGrid.children[row*WL+i];tile.textContent=d.guess[i].toUpperCase();tile.dataset.state=d.feedback[i];tile.classList.add('flip');tile.addEventListener('transitionend',()=>tile.classList.remove('flip'),{once:true});}for(let i=0;i<WL;i++){const key=keyboardEl.querySelector('[data-key="'+d.guess[i].toUpperCase()+'"]');if(!key)continue;const cs=key.dataset.state,ns=d.feedback[i];if(ns==='correct'||(ns==='wrong-location'&&cs!=='correct')||(ns==='wrong'&&!cs)){key.dataset.state=ns;key.classList.remove('wrong','wrong-location','correct');key.classList.add(ns);}}
@@ -149,15 +155,29 @@ if(status==='solved'){card.classList.add('spectate-card-solved');}else if(status
 function getStatusMessage(status,attempts){const rem=6-attempts;switch(status){case'solved':return '🎉 Solved the puzzle!';case'failed':return '💔 Ran out of attempts';default:if(rem<=1)return '⚠️ One guess away!';if(rem<=2)return '🔍 Getting close…';if(rem<=3)return '🤔 Still thinking…';return '📝 Working on it…';}}
 
 function submitGuess(gs){
-  if(roundSolved||currentRow>=WR||_guessInProgress)return;
+  console.log('[DBG] submitGuess called | gs='+gs+' | roundSolved='+roundSolved+' | currentRow='+currentRow+' | _guessInProgress='+_guessInProgress+' | _lastGuessWord='+_lastGuessWord+' | source='+(new Error().stack.split('\n')[2]||'').trim());
+  if(roundSolved||currentRow>=WR||_guessInProgress){console.log('[DBG] submitGuess BLOCKED');return;}
+  const g=gs.toLowerCase();
+  // ── DEDUP: block same word within DEDUP_WINDOW_MS ──
+  const now=Date.now();
+  if(g===_lastGuessWord && (now-_lastGuessTime)<DEDUP_WINDOW_MS){
+    console.log('[DBG] submitGuess DEDUP BLOCKED: same word "'+g+'" within '+(now-_lastGuessTime)+'ms');
+    showAlert('Duplicate word blocked — slow down!',1500);
+    return;
+  }
   _guessInProgress = true;
-  const g=gs.toLowerCase();if(!dictionary.includes(g)&&!targetWords.includes(g)){_guessInProgress=false;showAlert('Not in word list',1500);for(let i=0;i<WL;i++){const t=guessGrid.children[currentRow*WL+i];t.classList.add('shake');t.addEventListener('animationend',()=>t.classList.remove('shake'),{once:true});}return;}if(isSoloMode){_guessInProgress=false;handleSolo(g);}else send({type:'guess',guess:g});}
+  _lastGuessWord=g;
+  _lastGuessTime=now;
+  if(!dictionary.includes(g)&&!targetWords.includes(g)){_guessInProgress=false;showAlert('Not in word list',1500);for(let i=0;i<WL;i++){const t=guessGrid.children[currentRow*WL+i];t.classList.add('shake');t.addEventListener('animationend',()=>t.classList.remove('shake'),{once:true});}return;}if(isSoloMode){_guessInProgress=false;handleSolo(g);}else{const sent=send({type:'guess',guess:g});if(!sent){console.log('[DBG] submitGuess send() FAILED — _guessInProgress reset in send()');}}}
 
-function handleKey(key){
+function handleKey(key,source){
   if(gameState!=='playing'||roundSolved)return;
+  // ── DEBUG: log every keystroke ──
+  console.log('[DBG] handleKey | key='+key+' | source='+(source||'?')+' | currentGuess='+currentGuess.join('')+' | _guessInProgress='+_guessInProgress);
   if(key==='Enter'){
+    if(_guessInProgress){console.log('[DBG] handleKey Enter BLOCKED by _guessInProgress');return;}
     if(currentGuess.length===WL)submitGuess(currentGuess.join(''));else showAlert('Not enough letters',1000);
-  }else if(key==='Backspace'||key==='Delete'){if(currentGuess.length>0){currentGuess.pop();const t=guessGrid.children[currentRow*WL+currentGuess.length];t.textContent='';t.dataset.state='';}if(!isSoloMode)send({type:'typingUpdate',currentGuess:[...currentGuess]});}else if(/^[a-zA-Z]$/.test(key)&&currentGuess.length<WL){currentGuess.push(key.toLowerCase());const t=guessGrid.children[currentRow*WL+currentGuess.length-1];t.textContent=key.toUpperCase();t.dataset.state='active';if(!isSoloMode)send({type:'typingUpdate',currentGuess:[...currentGuess]});}}
+  }else if(key==='Backspace'||key==='Delete'){if(currentGuess.length>0){currentGuess.pop();const t=guessGrid.children[currentRow*WL+currentGuess.length];t.textContent='';t.dataset.state='';}if(!isSoloMode)send({type:'typingUpdate',currentGuess:[...currentGuess]});}else if(/^[a-zA-Z]$/.test(key)&&currentGuess.length<WL){if(_guessInProgress){console.log('[DBG] handleKey letter BLOCKED by _guessInProgress');return;}currentGuess.push(key.toLowerCase());const t=guessGrid.children[currentRow*WL+currentGuess.length-1];t.textContent=key.toUpperCase();t.dataset.state='active';if(!isSoloMode)send({type:'typingUpdate',currentGuess:[...currentGuess]});}}
 
 // Round end: show per-round results and cumulative total scores
 function showRoundEndPlayers(d) {
@@ -573,17 +593,23 @@ document.querySelector('[data-view-optimal-play-btn]')?.addEventListener('click'
 document.querySelector('[data-solo-play-again-btn]')?.addEventListener('click', startSolo);
 document.querySelector('[data-solo-back-menu-btn]')?.addEventListener('click', resetToMenu);
 // Keyboard click
-keyboardEl.addEventListener('pointerdown', (e) => { if (gameState !== 'playing') return; e.preventDefault(); const k = e.target.closest('[data-key]'); if (k) { keyboardEl._lastPointerDown = Date.now(); handleKey(k.dataset.key); } else if (e.target.closest('[data-enter]')) { keyboardEl._lastPointerDown = Date.now(); handleKey('Enter'); } else if (e.target.closest('[data-delete]')) { keyboardEl._lastPointerDown = Date.now(); handleKey('Backspace'); } });
+keyboardEl.addEventListener('pointerdown', (e) => { if (gameState !== 'playing') return; e.preventDefault(); const now = Date.now(); if (now - _lastKeyDownTime < 350) { console.log('[DBG] pointerdown BLOCKED by cross-guard: too soon after keydown ('+(now-_lastKeyDownTime)+'ms)'); return; } _lastPointerDownTime = now; const k = e.target.closest('[data-key]'); if (k) { handleKey(k.dataset.key, 'pointer'); } else if (e.target.closest('[data-enter]')) { handleKey('Enter', 'pointer'); } else if (e.target.closest('[data-delete]')) { handleKey('Backspace', 'pointer'); } });
 // Physical keyboard — e.repeat check prevents OS auto-repeat from sending duplicate guesses
 document.addEventListener('keydown', (e) => {
   if (gameState !== 'playing') return;
   // Block OS-level key-repeat for Enter and letter keys to prevent duplicate submissions
-  if (e.repeat && (e.key === 'Enter' || /^[a-zA-Z]$/.test(e.key))) return;
-  if (keyboardEl._lastPointerDown && Date.now() - keyboardEl._lastPointerDown < 300) return;
+  if (e.repeat) { console.log('[DBG] keydown e.repeat BLOCKED | key='+e.key); return; }
+  const now = Date.now();
+  // Cross-directional guard: block keydown if pointerdown just fired
+  if (now - _lastPointerDownTime < 350) {
+    console.log('[DBG] keydown BLOCKED by cross-guard: too soon after pointerdown ('+(now-_lastPointerDownTime)+'ms)');
+    return;
+  }
+  _lastKeyDownTime = now;
   e.preventDefault();
-  if (e.key === 'Enter') handleKey('Enter');
-  else if (e.key === 'Backspace' || e.key === 'Delete') handleKey('Backspace');
-  else if (/^[a-zA-Z]$/.test(e.key)) handleKey(e.key);
+  if (e.key === 'Enter') handleKey('Enter', 'keydown');
+  else if (e.key === 'Backspace' || e.key === 'Delete') handleKey('Backspace', 'keydown');
+  else if (/^[a-zA-Z]$/.test(e.key)) handleKey(e.key, 'keydown');
 });
 // Room ID input
 document.getElementById('join-room-id').addEventListener('input',(e)=>{e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'');});

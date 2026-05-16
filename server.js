@@ -442,6 +442,7 @@ function endGame(room) {
 
 function handlePlayerGuess(ws, data) {
   const player = players.get(ws);
+  console.log('[SRV] handlePlayerGuess | player='+(player?player.name:'null')+' | guess='+(typeof data.guess==='string'?data.guess:'?')+' | roomState='+(player?((rooms.get(player.roomId)||{}).state||'?'):'?'));
   if (!player) {
     ws.send(JSON.stringify({ type: 'guessInvalid', message: 'Not in a room' }));
     return;
@@ -490,12 +491,22 @@ function handlePlayerGuess(ws, data) {
     return;
   }
   
-  // Duplicate-guard: reject identical consecutive guesses (defense against rapid key-repeat or client bugs)
+  // Duplicate-guard (time-based + word-based): reject same word within 5 seconds
+  // Also catches non-consecutive duplicates (e.g., A→B→A pattern)
   const lastGuess = guessesMade > 0 ? round.playerGuesses[player.id][guessesMade - 1] : null;
   if (lastGuess && lastGuess.word === guess) {
+    console.log('[SRV] Duplicate-guard: same word "'+guess+'" consecutive — rejecting');
     ws.send(JSON.stringify({ type: 'guessInvalid', message: 'Duplicate guess ignored' }));
     return;
   }
+  // Time-based: reject same word submitted within 5 seconds (belt-and-suspenders with client)
+  if (player._lastGuessTime && player._lastGuessWord === guess && Date.now() - player._lastGuessTime < 5000) {
+    console.log('[SRV] Time-dedup-guard: word "'+guess+'" repeated within '+(Date.now()-player._lastGuessTime)+'ms — rejecting');
+    ws.send(JSON.stringify({ type: 'guessInvalid', message: 'Duplicate guess — slow down' }));
+    return;
+  }
+  player._lastGuessWord = guess;
+  player._lastGuessTime = Date.now();
   
   const word = round.word;
   // Base attempt number on actual guesses stored, not on results (which are only set on solve/fail)
